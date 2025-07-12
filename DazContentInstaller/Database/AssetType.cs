@@ -4,6 +4,7 @@ public enum AssetType
 {
     Unknown,
     Character,
+    Anatomy,
     Clothing,
     Hair,
     Props,

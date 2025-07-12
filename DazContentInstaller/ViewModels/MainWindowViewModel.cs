@@ -54,7 +54,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel()
     {
         ClearLoadedArchivesCommand = ReactiveCommand.Create(ClearLoadedArchives);
-        InstallArchivesCommand = ReactiveCommand.Create(InstallArchives);
+        InstallArchivesCommand = ReactiveCommand.CreateFromTask(InstallArchives);
     }
 
     public MainWindowViewModel(ApplicationDbContext dbContext) : this()
@@ -80,17 +80,26 @@ public partial class MainWindowViewModel : ViewModelBase
         CurrentSelectedAssetLibrary = libraries.OrderByDescending(d => d.IsDefault).FirstOrDefault();
     }
 
-    private void InstallArchives()
+    private async Task InstallArchives()
     {
+        if (CurrentSelectedAssetLibrary is null)
+            return;
+        
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.AsEnumerable() : LoadedArchives.AsEnumerable();
+        
+        foreach (var archive in archivesToInstall)
+        {
+            using var installer = new DazArchiveInstaller(archive);
+            await installer.InstallAsync(CurrentSelectedAssetLibrary.Path);
+        }
     }
 
     public async Task LoadArchiveFileAsync(string filePath)
     {
         try
         {
-            using var archive = new DazArchive(filePath);
+            using var archive = new DazArchiveLoader(filePath);
             var result = await archive.LoadArchiveAsync();
 
             LoadedArchives.Add(result);

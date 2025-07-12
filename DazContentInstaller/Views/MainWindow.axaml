@@ -80,13 +80,14 @@
                                     <DataGridTextColumn Header="Name"
                                                         Binding="{Binding DataType=models:LoadedArchive,Path=Name}"
                                                         Width="*" IsReadOnly="True" />
-                                    <DataGridTemplateColumn Header="Categories" Width="200">
+                                    <DataGridTemplateColumn Header="Categories" Width="150">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <ItemsControl ItemsSource="{Binding Categories}">
+                                                <ItemsControl ItemsSource="{Binding Categories}" Padding="0, 3" 
+                                                              VerticalAlignment="Center" HorizontalAlignment="Center">
                                                     <ItemsControl.ItemsPanel>
                                                         <ItemsPanelTemplate>
-                                                            <StackPanel Orientation="Horizontal" Spacing="4" />
+                                                            <StackPanel Orientation="Vertical" Spacing="4" />
                                                         </ItemsPanelTemplate>
                                                     </ItemsControl.ItemsPanel>
                                                     <ItemsControl.ItemTemplate>

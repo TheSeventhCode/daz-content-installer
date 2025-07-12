@@ -11,7 +11,7 @@ using SharpSevenZip;
 
 namespace DazContentInstaller.Services;
 
-public class DazArchive : IDisposable
+public class DazArchiveLoader : IDisposable
 {
     private readonly DirectoryInfo _tempDirectory;
     private readonly string _baseArchivePath;
@@ -19,6 +19,7 @@ public class DazArchive : IDisposable
     private readonly Dictionary<string, AssetType> _folderToAssetType = new()
     {
         { "characters", AssetType.Character },
+        { "anatomy", AssetType.Anatomy },
         { "clothing", AssetType.Clothing },
         { "wardrobe", AssetType.Clothing },
         { "hair", AssetType.Hair },
@@ -27,6 +28,7 @@ public class DazArchive : IDisposable
         { "environments", AssetType.Environment },
         { "scenes", AssetType.Environment },
         { "poses", AssetType.Poses },
+        { "expressions", AssetType.Poses },
         { "animations", AssetType.Poses },
         { "materials", AssetType.Materials },
         { "shaders", AssetType.Materials },
@@ -48,51 +50,40 @@ public class DazArchive : IDisposable
 
     private static readonly string[] MetadataFiles = ["Supplement.dsx", "manifest.json", "ProductInformation.json"];
 
-    public DazArchive(string baseArchivePath)
+    public DazArchiveLoader(string baseArchivePath)
     {
-        _tempDirectory = Directory.CreateTempSubdirectory("DazContentInstaller");
+        _tempDirectory = Directory.CreateTempSubdirectory("DazContentLoader");
         _baseArchivePath = baseArchivePath;
     }
 
-    public async Task<LoadedArchive> LoadArchiveAsync(IProgress<string>? progress = null)
+    public async Task<List<LoadedArchive>> LoadArchiveAsync(IProgress<string>? progress = null)
     {
-        var archive = new LoadedArchive
+        var archives = new List<LoadedArchive>();
+
+        progress?.Report("Reading Archive...");
+        using var archiveFile = new SharpSevenZipExtractor(_baseArchivePath);
+
+        await archiveFile.ExtractArchiveAsync(_tempDirectory.FullName);
+
+        progress?.Report("Analyzing contents...");
+
+        if (archiveFile.ArchiveFileNames.All(d => _packagedArchiveFileExtensions.Contains(Path.GetExtension(d))))
+            archives.AddRange(await DigSubArchivesAsync(progress));
+        else
         {
-            FilePath = _baseArchivePath,
-            Name = Path.GetFileNameWithoutExtension(_baseArchivePath),
-            Status = ArchiveStatus.Loading
-        };
-
-        try
-        {
-            progress?.Report("Reading Archive...");
-
-            var fileInfo = new FileInfo(_baseArchivePath);
-            archive.FileSizeBytes = fileInfo.Length;
-
-            using var archiveFile = new SharpSevenZipExtractor(_baseArchivePath);
-
-            await archiveFile.ExtractArchiveAsync(_tempDirectory.FullName);
-
-            progress?.Report("Analyzing contents...");
-
-            if (archiveFile.ArchiveFileNames.All(d => _packagedArchiveFileExtensions.Contains(Path.GetExtension(d))))
-                await DigSubArchivesAsync(archive, progress);
-            else
+            var archive = new LoadedArchive
             {
-                progress?.Report("Reading contents...");
-                await HandleArchiveAsync(archive, archiveFile, progress);
-            }
+                FilePath = _baseArchivePath,
+                Name = Path.GetFileNameWithoutExtension(_baseArchivePath),
+                Status = ArchiveStatus.Loading
+            };
 
-            archive.Status = ArchiveStatus.Ready;
-        }
-        catch (Exception ex)
-        {
-            archive.Status = ArchiveStatus.Error;
-            archive.Metadata["Error"] = ex.Message;
+            progress?.Report("Reading contents...");
+            await HandleArchiveAsync(archive, archiveFile, progress);
+            archives.Add(archive);
         }
 
-        return archive;
+        return archives;
     }
 
     public void Dispose()
@@ -100,29 +91,46 @@ public class DazArchive : IDisposable
         _tempDirectory.Delete(true);
     }
 
-    private async Task DigSubArchivesAsync(LoadedArchive archive, IProgress<string>? progress)
+    private async Task<List<LoadedArchive>> DigSubArchivesAsync(IProgress<string>? progress)
     {
         var fileIndex = 0;
+        var archives = new List<LoadedArchive>();
+
         foreach (var subarchive in _tempDirectory.GetFiles().Where(fi => Path.GetExtension(fi.Name).EndsWith("zip")))
         {
             fileIndex++;
             progress?.Report($"Reading sub-archive {fileIndex}...");
+
+            var archive = new LoadedArchive
+            {
+                FilePath = Path.Combine(_baseArchivePath, subarchive.Name),
+                Name = Path.Combine(Path.GetFileNameWithoutExtension(_baseArchivePath), subarchive.Name),
+                Status = ArchiveStatus.Loading
+            };
 
             var subArchive = new SharpSevenZipExtractor(subarchive.FullName);
             if (subArchive.ArchiveFileData.First().FileName.Equals("Templates", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             await HandleArchiveAsync(archive, subArchive, progress);
+            archives.Add(archive);
         }
+
+        return archives;
     }
 
     private async Task HandleArchiveAsync(LoadedArchive archive, SharpSevenZipExtractor archiveFile,
         IProgress<string>? progress)
     {
+        var fileInfo = new FileInfo(archiveFile.FileName!);
+        archive.FileSizeBytes = fileInfo.Length;
+
         AnalyzeZipContents(archive, archiveFile, progress);
 
         progress?.Report("Extracting metadata...");
         await ExtractMetadataAsync(archive, archiveFile, progress);
+
+        archive.Status = ArchiveStatus.Ready;
     }
 
     private void AnalyzeZipContents(LoadedArchive archive, SharpSevenZipExtractor archiveFile,
