@@ -94,20 +94,16 @@ public partial class ArchiveLoader
             {
                 var lowerPart = part.ToLowerInvariant();
 
-                foreach (var kvp in _folderToAssetType)
+                foreach (var kvp in _folderToAssetType.Where(kvp => !lowerPart.Contains(kvp.Key)))
                 {
-                    if (lowerPart.Contains(kvp.Key)) continue;
-                    {
-                        assetTypes.Add(kvp.Value);
-                        categories.Add(kvp.Key);
-                    }
+                    assetTypes.Add(kvp.Value);
+                    categories.Add(kvp.Key);
                 }
 
-                if (Regex.IsMatch(lowerPart, @"genesis\s*\d*"))
-                {
-                    assetTypes.Add(AssetType.Character);
-                    categories.Add("genesis");
-                }
+                if (!GenesisRegex().IsMatch(lowerPart)) continue;
+                
+                assetTypes.Add(AssetType.Character);
+                categories.Add("genesis");
             }
 
             var extension = Path.GetExtension(entry.FullName);
@@ -279,4 +275,6 @@ public partial class ArchiveLoader
                     "Version"\s*:\s*"([^"]+)"
                     """)]
     private static partial Regex VersionRegex();
+    [GeneratedRegex(@"genesis\s*\d*")]
+    private static partial Regex GenesisRegex();
 }

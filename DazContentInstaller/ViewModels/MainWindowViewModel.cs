@@ -10,7 +10,7 @@ namespace DazContentInstaller.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
-    private readonly ApplicationDbContext _dbContext;
+    private readonly ApplicationDbContext _dbContext = null!;
     public ObservableCollection<LoadedArchive> LoadedArchives { get; set; } = [];
     public ObservableCollection<AssetLibrary> AssetLibraries { get; set; } = [];
     private AssetLibrary? _currentSelectedAssetLibrary;

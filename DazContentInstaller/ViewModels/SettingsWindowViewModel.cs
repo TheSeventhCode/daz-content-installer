@@ -16,8 +16,8 @@ public class SettingsWindowViewModel : ViewModelBase
 {
     public ObservableCollection<AssetLibraryModel> AssetLibraries { get; set; } = [];
 
-    public readonly SettingsService SettingsService;
-    private readonly ApplicationDbContext _dbContext;
+    private readonly SettingsService _settingsService = null!;
+    private readonly ApplicationDbContext _dbContext = null!;
     private bool _autoDetectDazLibraries = true;
     private bool _createBackupBeforeInstall = true;
     private string _tempDirectory = string.Empty;
@@ -27,7 +27,7 @@ public class SettingsWindowViewModel : ViewModelBase
         get => _autoDetectDazLibraries;
         set
         {
-            SettingsService.CurrentSettings.AutoDetectDazLibraries = value;
+            _settingsService.CurrentSettings.AutoDetectDazLibraries = value;
             SetProperty(ref _autoDetectDazLibraries, value);
         }
     }
@@ -37,7 +37,7 @@ public class SettingsWindowViewModel : ViewModelBase
         get => _createBackupBeforeInstall;
         set
         {
-            SettingsService.CurrentSettings.CreateBackupBeforeInstall = value;
+            _settingsService.CurrentSettings.CreateBackupBeforeInstall = value;
             SetProperty(ref _createBackupBeforeInstall, value);
         }
     }
@@ -47,14 +47,14 @@ public class SettingsWindowViewModel : ViewModelBase
         get => _tempDirectory;
         set
         {
-            SettingsService.CurrentSettings.TempDirectory = value;
+            _settingsService.CurrentSettings.TempDirectory = value;
             SetProperty(ref _tempDirectory, value);
         }
     }
 
     public SettingsWindowViewModel(SettingsService settingsService, ApplicationDbContext dbContext) : this()
     {
-        SettingsService = settingsService;
+        _settingsService = settingsService;
         _dbContext = dbContext;
     }
 
@@ -69,7 +69,7 @@ public class SettingsWindowViewModel : ViewModelBase
 
     private async Task AutoDetectLibrariesAsync()
     {
-        await SettingsService.AutoDetectDazLibrariesAsync();
+        await _settingsService.AutoDetectDazLibrariesAsync();
         await ReloadLibrariesAsync();
     }
 
@@ -85,21 +85,21 @@ public class SettingsWindowViewModel : ViewModelBase
 
     public async Task LoadSettingsAsync()
     {
-        await SettingsService.LoadSettingsAsync();
-        AutoDetectDazLibraries = SettingsService.CurrentSettings.AutoDetectDazLibraries;
-        CreateBackupBeforeInstall = SettingsService.CurrentSettings.CreateBackupBeforeInstall;
-        TempDirectory = SettingsService.CurrentSettings.TempDirectory;
+        await _settingsService.LoadSettingsAsync();
+        AutoDetectDazLibraries = _settingsService.CurrentSettings.AutoDetectDazLibraries;
+        CreateBackupBeforeInstall = _settingsService.CurrentSettings.CreateBackupBeforeInstall;
+        TempDirectory = _settingsService.CurrentSettings.TempDirectory;
         
         await ReloadLibrariesAsync();
     }
     
     public async Task SaveAsync()
     {
-        SettingsService.CurrentSettings.AutoDetectDazLibraries = AutoDetectDazLibraries;
-        SettingsService.CurrentSettings.CreateBackupBeforeInstall = CreateBackupBeforeInstall;
-        SettingsService.CurrentSettings.TempDirectory = TempDirectory;
+        _settingsService.CurrentSettings.AutoDetectDazLibraries = AutoDetectDazLibraries;
+        _settingsService.CurrentSettings.CreateBackupBeforeInstall = CreateBackupBeforeInstall;
+        _settingsService.CurrentSettings.TempDirectory = TempDirectory;
         
-        await SettingsService.SaveSettingsAsync();
+        await _settingsService.SaveSettingsAsync();
         
         var dbLibraries = await _dbContext.AssetLibraries.ToListAsync();
         var newLibraries = AssetLibraries.Where(l => dbLibraries.All(dl => dl.Id != l.Id)).ToList();

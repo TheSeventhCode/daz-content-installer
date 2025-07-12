@@ -3,7 +3,6 @@
         xmlns:vm="using:DazContentInstaller.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:database="clr-namespace:DazContentInstaller.Database"
         xmlns:models="clr-namespace:DazContentInstaller.Models"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450" Width="1600" Height="900"
         x:Class="DazContentInstaller.Views.MainWindow"
@@ -78,10 +77,10 @@
                                     <DataGridTextColumn Header="Name"
                                                         Binding="{Binding DataType=models:LoadedArchive,Path=Name}"
                                                         Width="*" />
-                                    <DataGridTextColumn Header="Name"
-                                                        Binding="{Binding DataType=models:LoadedArchive,Path=Size}"
+                                    <DataGridTextColumn Header="Size"
+                                                        Binding="{Binding DataType=models:LoadedArchive,Path=FileSizeBytes}"
                                                         Width="80" />
-                                    <DataGridTextColumn Header="Name"
+                                    <DataGridTextColumn Header="Status"
                                                         Binding="{Binding DataType=models:LoadedArchive,Path=Status}"
                                                         Width="100" />
                                 </DataGrid.Columns>
