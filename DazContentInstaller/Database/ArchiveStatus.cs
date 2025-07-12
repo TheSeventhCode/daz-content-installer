@@ -2,6 +2,9 @@
 
 public enum ArchiveStatus
 {
-    Loaded,
-    Installed
+    Ready,
+    Loading,
+    Installed,
+    Invalid,
+    Error
 }

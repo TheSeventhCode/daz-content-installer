@@ -57,8 +57,8 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 Name = Path.GetFileNameWithoutExtension(filePath),
                 FilePath = filePath,
-                Size = FormatFileSize(fileInfo.Length),
-                Status = ArchiveStatus.Loaded
+                FileSizeBytes = fileInfo.Length,
+                Status = ArchiveStatus.Ready
             };
                 
             LoadedArchives.Add(asset);
