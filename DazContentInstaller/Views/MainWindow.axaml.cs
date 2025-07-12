@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using DazContentInstaller.Models;
 using DazContentInstaller.Services;
 using DazContentInstaller.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
@@ -120,10 +121,19 @@ public partial class MainWindow : Window
         {
             DataContext = ServiceCollectionExtensions.GetServiceProvider().GetRequiredService<SettingsWindowViewModel>()
         };
+
         var result = await settingsWindow.ShowDialog<bool>(this);
         if (result)
         {
             await ViewModel.LoadAssetLibrariesAsync();
         }
+    }
+
+    private void ArchivesDataGrid_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm || sender is not DataGrid grid) return;
+        
+        vm.SelectedArchives.Clear();
+        foreach (var item in grid.SelectedItems) vm.SelectedArchives.Add((LoadedArchive)item);
     }
 }

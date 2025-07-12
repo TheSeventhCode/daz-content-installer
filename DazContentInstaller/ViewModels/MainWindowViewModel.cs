@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Reactive;
 using System.Threading.Tasks;
 using DazContentInstaller.Database;
 using DazContentInstaller.Models;
 using DazContentInstaller.Services;
+using DynamicData;
 using Microsoft.EntityFrameworkCore;
 using ReactiveUI;
 
@@ -15,8 +17,18 @@ public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly ApplicationDbContext _dbContext = null!;
     public ObservableCollection<LoadedArchive> LoadedArchives { get; set; } = [];
+
+    private ObservableCollection<LoadedArchive> _selectedArchives = [];
+
+    public ObservableCollection<LoadedArchive> SelectedArchives
+    {
+        get => _selectedArchives;
+        set => SetProperty(ref _selectedArchives, value);
+    }
+
     public ObservableCollection<AssetLibrary> AssetLibraries { get; set; } = [];
     private AssetLibrary? _currentSelectedAssetLibrary;
+
     public AssetLibrary? CurrentSelectedAssetLibrary
     {
         get => _currentSelectedAssetLibrary;
@@ -24,13 +36,15 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     private bool _installButtonEnabled;
+
     public bool InstallButtonEnabled
     {
         get => _installButtonEnabled;
         set => SetProperty(ref _installButtonEnabled, value);
     }
-    
+
     private string _statusText = "Ready";
+
     public string StatusText
     {
         get => _statusText;
@@ -40,7 +54,9 @@ public partial class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel()
     {
         ClearLoadedArchivesCommand = ReactiveCommand.Create(ClearLoadedArchives);
+        InstallArchivesCommand = ReactiveCommand.Create(InstallArchives);
     }
+
     public MainWindowViewModel(ApplicationDbContext dbContext) : this()
     {
         _dbContext = dbContext;
@@ -54,13 +70,22 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     public ReactiveCommand<Unit, Unit> ClearLoadedArchivesCommand { get; set; }
+    public ReactiveCommand<Unit, Unit> InstallArchivesCommand { get; set; }
 
     public async Task LoadAssetLibrariesAsync()
     {
         var libraries = await _dbContext.AssetLibraries.ToListAsync();
-        AssetLibraries = new ObservableCollection<AssetLibrary>(libraries);
+        AssetLibraries.Clear();
+        AssetLibraries.AddRange(libraries);
+        CurrentSelectedAssetLibrary = libraries.OrderByDescending(d => d.IsDefault).FirstOrDefault();
     }
-    
+
+    private void InstallArchives()
+    {
+        var archivesToInstall =
+            SelectedArchives.Count > 0 ? SelectedArchives.AsEnumerable() : LoadedArchives.AsEnumerable();
+    }
+
     public async Task LoadArchiveFileAsync(string filePath)
     {
         try
@@ -77,11 +102,12 @@ public partial class MainWindowViewModel : ViewModelBase
             StatusText = $"Error loading {Path.GetFileName(filePath)}: {ex.Message}";
         }
     }
-    
+
     private void UpdateInstallButton()
     {
         InstallButtonEnabled = LoadedArchives.Count > 0 && CurrentSelectedAssetLibrary != null;
     }
+
     private static string FormatFileSize(long bytes)
     {
         string[] sizes = { "B", "KB", "MB", "GB" };
@@ -92,6 +118,7 @@ public partial class MainWindowViewModel : ViewModelBase
             order++;
             len /= 1024;
         }
+
         return $"{len:0.##} {sizes[order]}";
     }
 }

@@ -58,16 +58,13 @@
                         <TextBlock Text="Install to:"
                                    VerticalAlignment="Center" Margin="0,0,10,0" />
                         <ComboBox ItemsSource="{Binding AssetLibraries}"
-                                  Grid.Column="1" MinWidth="200" SelectedItem="{Binding CurrentSelectedAssetLibrary}">
+                                  Grid.Column="1" MinWidth="400" SelectedItem="{Binding CurrentSelectedAssetLibrary}">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Path}" />
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
-                        <Button Name="RefreshLibrariesButton" Grid.Column="2" Content="🔄" Margin="5,0,0,0"
-                                Padding="8,5"
-                                ToolTip.Tip="Refresh asset libraries" />
                     </Grid>
 
                     <!-- Loaded Assets List -->
@@ -75,7 +72,8 @@
                         <Grid RowDefinitions="Auto,*">
                             <TextBlock Grid.Row="0" Text="Loaded Assets"
                                        FontWeight="Bold" Padding="10,8" Background="#F0F0F0" />
-                            <DataGrid Grid.Row="1" ItemsSource="{Binding LoadedArchives}" AutoGenerateColumns="False"
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding LoadedArchives}" 
+                                      SelectionMode="Extended" SelectionChanged="ArchivesDataGrid_OnSelectionChanged" AutoGenerateColumns="False"
                                       CanUserReorderColumns="False" CanUserSortColumns="True"
                                       GridLinesVisibility="Horizontal" HeadersVisibility="Column">
                                 <DataGrid.Columns>
@@ -131,12 +129,12 @@
                                      Margin="0,0,10,0"
                                      IsVisible="False" />
                         <Button Name="InstallButton"
-                                IsEffectivelyEnabled="{Binding InstallButtonEnabled}"
+                                IsEnabled="{Binding InstallButtonEnabled}"
+                                Command="{Binding InstallArchivesCommand}"
                                 Grid.Column="1"
                                 Content="Install Selected"
                                 Padding="15,8"
-                                Margin="0,0,5,0"
-                                IsEnabled="False" />
+                                Margin="0,0,5,0"/>
                         <Button Name="ClearButton"
                                 Grid.Column="2"
                                 Content="Clear All"
