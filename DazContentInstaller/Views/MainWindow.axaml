@@ -1,0 +1,188 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DazContentInstaller.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:database="clr-namespace:DazContentInstaller.Database"
+        xmlns:models="clr-namespace:DazContentInstaller.Models"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450" Width="1600" Height="900"
+        x:Class="DazContentInstaller.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="DazContentInstaller" Loaded="Control_OnLoaded">
+
+    <Design.DataContext>
+        <!-- This only sets the DataContext for the previewer in an IDE,
+             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
+        <vm:MainWindowViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- Header Section -->
+        <Border Grid.Row="0" Background="#2B2B2B" Padding="15,10">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="DAZ Studio Asset Manager" FontSize="18" FontWeight="Bold" Foreground="White"
+                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <Button Click="OnSettingsClick" Content="Settings" Padding="10,5" Background="White" />
+                    <Button Name="AboutButton" Content="About" Padding="10,5" Background="White" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1" ColumnDefinitions="2*,*" Margin="10">
+            <Border Grid.Column="0" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="5" Padding="10"
+                    Margin="0,0,5,0">
+                <Grid RowDefinitions="Auto,Auto,*,Auto">
+                    <!-- Drop Zone -->
+                    <Border Grid.Row="0" Name="DropZone" Background="#F8F8F8" BorderBrush="#CCCCCC" BorderThickness="2"
+                            CornerRadius="8" Height="120" Margin="0,0,0,15">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Top" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="📦" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,5" />
+                                <TextBlock Text="Drop ZIP Files here or click to browse"
+                                           FontSize="14" HorizontalAlignment="Center" Foreground="#666666" />
+                                <Button Name="BrowseButton" Content="Browse Files" Margin="0,10,0,0" Padding="15,5"
+                                        HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- Asset Library Selection -->
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,15">
+                        <TextBlock Text="Install to:"
+                                   VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <ComboBox ItemsSource="{Binding AssetLibraries}"
+                                  Grid.Column="1" MinWidth="200" SelectedItem="{Binding CurrentSelectedAssetLibrary}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Path}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Name="RefreshLibrariesButton" Grid.Column="2" Content="🔄" Margin="5,0,0,0"
+                                Padding="8,5"
+                                ToolTip.Tip="Refresh asset libraries" />
+                    </Grid>
+
+                    <!-- Loaded Assets List -->
+                    <Border Grid.Row="2" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="3">
+                        <Grid RowDefinitions="Auto,*">
+                            <TextBlock Grid.Row="0" Text="Loaded Assets"
+                                       FontWeight="Bold" Padding="10,8" Background="#F0F0F0" />
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding LoadedArchives}" AutoGenerateColumns="False"
+                                      CanUserReorderColumns="False" CanUserSortColumns="True"
+                                      GridLinesVisibility="Horizontal" HeadersVisibility="Column">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Name"
+                                                        Binding="{Binding DataType=models:LoadedArchive,Path=Name}"
+                                                        Width="*" />
+                                    <DataGridTextColumn Header="Name"
+                                                        Binding="{Binding DataType=models:LoadedArchive,Path=Size}"
+                                                        Width="80" />
+                                    <DataGridTextColumn Header="Name"
+                                                        Binding="{Binding DataType=models:LoadedArchive,Path=Status}"
+                                                        Width="100" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Action Buttons -->
+                    <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" Margin="0,15,0,0">
+                        <ProgressBar Name="InstallProgressBar"
+                                     Grid.Column="0"
+                                     Height="25"
+                                     Margin="0,0,10,0"
+                                     IsVisible="False" />
+                        <Button Name="InstallButton"
+                                IsEffectivelyEnabled="{Binding InstallButtonEnabled}"
+                                Grid.Column="1"
+                                Content="Install Selected"
+                                Padding="15,8"
+                                Margin="0,0,5,0"
+                                IsEnabled="False" />
+                        <Button Name="ClearButton"
+                                Grid.Column="2"
+                                Content="Clear All"
+                                Padding="15,8" />
+                    </Grid>
+                </Grid>
+            </Border>
+            
+            <!-- Right Panel - Installed Assets -->
+            <Border Grid.Column="1" 
+                    BorderBrush="#E0E0E0" 
+                    BorderThickness="1" 
+                    CornerRadius="5" 
+                    Padding="10"
+                    Margin="5,0,0,0">
+                <Grid RowDefinitions="Auto,*,Auto">
+          
+                    <StackPanel Orientation="Vertical" Margin="0,0,0,10">
+                        <!-- Installed Assets Header -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                            <TextBlock Text="Installed Assets" 
+                                       FontWeight="Bold" 
+                                       FontSize="14" 
+                                       VerticalAlignment="Center"/>
+                            <Button Name="RefreshInstalledButton" 
+                                    Grid.Column="1" 
+                                    Content="🔄" 
+                                    Padding="5" 
+                                    ToolTip.Tip="Refresh installed assets"/>
+                        </Grid>
+
+                        <!-- Search Box -->
+                        <TextBox Name="SearchBox" 
+                                 Grid.Row="0" 
+                                 Watermark="Search installed assets..."/>
+                    </StackPanel>
+
+                    <!-- Installed Assets List -->
+                    <TreeView Name="InstalledAssetsTree" 
+                              Grid.Row="1" 
+                              SelectionMode="Single"/>
+
+                    <!-- Uninstall Controls -->
+                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,15,0,0">
+                        <TextBlock Name="SelectedAssetInfo" 
+                                   Grid.Column="0" 
+                                   Text="Select an asset to see details" 
+                                   FontSize="11" 
+                                   Foreground="#666666" 
+                                   VerticalAlignment="Center"/>
+                        <Button Name="UninstallButton" 
+                                Grid.Column="1" 
+                                Content="Uninstall" 
+                                Padding="15,8" 
+                                Background="#DC3545" 
+                                Foreground="White"
+                                IsEnabled="False"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+        
+        <!-- Status Bar -->
+        <Border Grid.Row="2" 
+                Background="#F0F0F0" 
+                BorderBrush="#E0E0E0" 
+                BorderThickness="0,1,0,0" 
+                Padding="10,5">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Name="StatusText"
+                           Grid.Column="0" 
+                           Text="{Binding StatusText}" 
+                           VerticalAlignment="Center"/>
+                <TextBlock Name="AssetCountText" 
+                           Grid.Column="1" 
+                           Text="0 assets installed" 
+                           VerticalAlignment="Center" 
+                           Foreground="#666666"/>
+            </Grid>
+        </Border>
+    </Grid>
+
+</Window>

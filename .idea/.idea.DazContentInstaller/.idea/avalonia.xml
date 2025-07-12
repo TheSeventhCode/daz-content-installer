@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AvaloniaProject">
+    <option name="projectPerEditor">
+      <map>
+        <entry key="DazContentInstaller/App.axaml" value="DazContentInstaller/DazContentInstaller.csproj" />
+        <entry key="DazContentInstaller/ViewModels/SettingsWindow.axaml" value="DazContentInstaller/DazContentInstaller.csproj" />
+        <entry key="DazContentInstaller/Views/MainWindow.axaml" value="DazContentInstaller/DazContentInstaller.csproj" />
+        <entry key="DazContentInstaller/Views/SettingsWindow.axaml" value="DazContentInstaller/DazContentInstaller.csproj" />
+      </map>
+    </option>
+  </component>
+</project>
