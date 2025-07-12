@@ -45,7 +45,7 @@ public class LoadedArchive : ViewModelBase
     };
 
     public AssetType AssetType { get; set; } = AssetType.Unknown;
-    public List<string> Categories { get; set; } = new();
+    public HashSet<string> Categories { get; set; } = [];
     public List<string> ContainedFiles { get; set; } = [];
     public Dictionary<string, object> Metadata { get; set; } = new();
     private static string FormatFileSize(long bytes)

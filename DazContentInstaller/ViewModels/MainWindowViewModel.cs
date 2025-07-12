@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Reactive;
 using System.Threading.Tasks;
 using DazContentInstaller.Database;
 using DazContentInstaller.Models;
+using DazContentInstaller.Services;
 using Microsoft.EntityFrameworkCore;
+using ReactiveUI;
 
 namespace DazContentInstaller.ViewModels;
 
@@ -36,11 +39,21 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel()
     {
+        ClearLoadedArchivesCommand = ReactiveCommand.Create(ClearLoadedArchives);
     }
-    public MainWindowViewModel(ApplicationDbContext dbContext)
+    public MainWindowViewModel(ApplicationDbContext dbContext) : this()
     {
         _dbContext = dbContext;
     }
+
+    private void ClearLoadedArchives()
+    {
+        LoadedArchives.Clear();
+        UpdateInstallButton();
+        StatusText = "Ready";
+    }
+
+    public ReactiveCommand<Unit, Unit> ClearLoadedArchivesCommand { get; set; }
 
     public async Task LoadAssetLibrariesAsync()
     {
@@ -48,20 +61,14 @@ public partial class MainWindowViewModel : ViewModelBase
         AssetLibraries = new ObservableCollection<AssetLibrary>(libraries);
     }
     
-    public void LoadArchiveFile(string filePath)
+    public async Task LoadArchiveFileAsync(string filePath)
     {
         try
         {
-            var fileInfo = new FileInfo(filePath);
-            var asset = new LoadedArchive
-            {
-                Name = Path.GetFileNameWithoutExtension(filePath),
-                FilePath = filePath,
-                FileSizeBytes = fileInfo.Length,
-                Status = ArchiveStatus.Ready
-            };
-                
-            LoadedArchives.Add(asset);
+            using var archive = new DazArchive(filePath);
+            var result = await archive.LoadArchiveAsync();
+
+            LoadedArchives.Add(result);
             UpdateInstallButton();
             StatusText = $"Loaded {Path.GetFileName(filePath)}";
         }

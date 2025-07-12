@@ -31,7 +31,7 @@ public partial class MainWindow : Window
         BrowseButton.Click += OnBrowseClick;
     }
 
-    private void OnDrop(object? sender, DragEventArgs e)
+    private async Task OnDrop(object? sender, DragEventArgs e)
     {
         DropZone.Background = Avalonia.Media.Brushes.Transparent;
 
@@ -44,7 +44,7 @@ public partial class MainWindow : Window
         if (zipFiles == null) return;
 
         foreach (var file in zipFiles)
-            ViewModel.LoadArchiveFile(file.Path.LocalPath);
+            await ViewModel.LoadArchiveFileAsync(file.Path.LocalPath);
     }
 
     private void OnDragOver(object? sender, DragEventArgs e)
@@ -78,7 +78,7 @@ public partial class MainWindow : Window
             if (files.Count < 1) return;
 
             foreach (var file in files)
-                ViewModel.LoadArchiveFile(file.Path.ToString());
+                await ViewModel.LoadArchiveFileAsync(file.Path.LocalPath.ToString());
         }
         catch (Exception ex)
         {
@@ -88,10 +88,11 @@ public partial class MainWindow : Window
 
     private async void Control_OnLoaded(object? sender, RoutedEventArgs e)
     {
-        if (Application.Current?.ApplicationLifetime is null)
-            return;
         try
         {
+            if (Application.Current?.ApplicationLifetime is null)
+                return;
+            
             await ViewModel.LoadAssetLibrariesAsync();
         }
         catch (Exception ex)
