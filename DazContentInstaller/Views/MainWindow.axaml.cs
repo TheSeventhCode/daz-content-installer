@@ -75,7 +75,7 @@ public partial class MainWindow : Window
                 ]
             });
 
-            if (!files.Any()) return;
+            if (files.Count < 1) return;
 
             foreach (var file in files)
                 ViewModel.LoadArchiveFile(file.Path.ToString());
@@ -115,7 +115,7 @@ public partial class MainWindow : Window
 
     private async void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
-        var settingsWindow = new SettingsWindow
+        var settingsWindow = new SettingsWindow()
         {
             DataContext = ServiceCollectionExtensions.GetServiceProvider().GetRequiredService<SettingsWindowViewModel>()
         };

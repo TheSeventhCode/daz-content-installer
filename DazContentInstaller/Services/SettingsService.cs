@@ -111,12 +111,16 @@ public class SettingsService
                 "My Library"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DAZ 3D", "Studio",
                 "My DAZ 3D Library"),
-            @"C:\Users\Public\Documents\My DAZ 3D Library",
-            @"C:\Program Files\DAZ 3D\DAZStudio4\Content"
+            @"C:\Users\Public\Documents\My DAZ 3D Library"
         };
 
-        var makeDefault = true;
-        foreach (var library in potentialPaths.Where(Directory.Exists).Select(path =>
+        var currentLibraries = await _dbContext.AssetLibraries.Select(d => d.Path).ToListAsync();
+
+        var makeDefault = currentLibraries.Count < 1;
+        foreach (var library in potentialPaths
+                     .Except(currentLibraries)
+                     .Where(Directory.Exists)
+                     .Select(path =>
                          new AssetLibrary { Name = Path.GetFileName(path), Path = path, IsDefault = makeDefault }))
         {
             makeDefault = false;

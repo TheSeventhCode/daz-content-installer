@@ -30,6 +30,7 @@ public static class ServiceCollectionExtensions
             o.UseSqlite($"Data Source={config.DbPath}"));
 
         services.AddSingleton<SettingsService>();
+        services.AddSingleton<IAppInfoService, AppInfoService>();
         
         services.AddTransient<MainWindowViewModel>();
         services.AddTransient<SettingsWindowViewModel>();
