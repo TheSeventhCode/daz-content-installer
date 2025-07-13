@@ -12,15 +12,13 @@ namespace DazContentInstaller;
 public static class ServiceCollectionExtensions
 {
     private static IServiceProvider? _serviceProvider;
-    public static IServiceCollection CreateServiceCollection()
+
+    private static IServiceCollection CreateServiceCollection(this IServiceCollection services)
     {
-        var services = new ServiceCollection();
         var appInfo = new AppInfoService();
         services.AddSingleton(appInfo);
 
-        var appDataPath = appInfo.IsDevelopmentEnvironment()
-            ? AppDomain.CurrentDomain.BaseDirectory
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DazContentInstaller");
+        var appDataPath = AppDomain.CurrentDomain.BaseDirectory;
 
         var config = new InstallerConfig { AppDataPath = appDataPath };
 
@@ -31,7 +29,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<SettingsService>();
         services.AddSingleton<IAppInfoService, AppInfoService>();
-        
+
         services.AddTransient<MainWindowViewModel>();
         services.AddTransient<SettingsWindowViewModel>();
 
@@ -40,6 +38,6 @@ public static class ServiceCollectionExtensions
 
     public static IServiceProvider GetServiceProvider()
     {
-        return _serviceProvider ??= CreateServiceCollection().BuildServiceProvider();
+        return _serviceProvider ??= CreateServiceCollection(new ServiceCollection()).BuildServiceProvider();
     }
 }

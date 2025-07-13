@@ -103,7 +103,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task ShowErrorMessageBox(Exception ex)
+    private static async Task ShowErrorMessageBox(Exception ex)
     {
         var box = MessageBoxManager.GetMessageBoxCustom(new MessageBoxCustomParams
         {
@@ -118,15 +118,22 @@ public partial class MainWindow : Window
 
     private async void OnSettingsClick(object? sender, RoutedEventArgs e)
     {
-        var settingsWindow = new SettingsWindow()
+        try
         {
-            DataContext = ServiceCollectionExtensions.GetServiceProvider().GetRequiredService<SettingsWindowViewModel>()
-        };
+            var settingsWindow = new SettingsWindow()
+            {
+                DataContext = ServiceCollectionExtensions.GetServiceProvider().GetRequiredService<SettingsWindowViewModel>()
+            };
 
-        var result = await settingsWindow.ShowDialog<bool>(this);
-        if (result)
+            var result = await settingsWindow.ShowDialog<bool>(this);
+            if (result)
+            {
+                await ViewModel.LoadAssetLibrariesAsync();
+            }
+        }
+        catch (Exception ex)
         {
-            await ViewModel.LoadAssetLibrariesAsync();
+            await ShowErrorMessageBox(ex);
         }
     }
 
@@ -136,5 +143,33 @@ public partial class MainWindow : Window
         
         vm.SelectedArchives.Clear();
         foreach (var item in grid.SelectedItems) vm.SelectedArchives.Add((LoadedArchive)item);
+    }
+
+    private async void AssetLibrary_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainWindowViewModel vm || sender is not ComboBox cb) return;
+
+            await vm.LoadInstalledArchivesAsync();
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorMessageBox(ex);
+        }
+    }
+
+    private async void InstalledArchivesTreeView_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainWindowViewModel vm || sender is not TreeView tree) return;
+            
+            await vm.UpdateInstalledAssetDetailsAsync(e.AddedItems.Cast<TreeNode>().FirstOrDefault());
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorMessageBox(ex);
+        }
     }
 }

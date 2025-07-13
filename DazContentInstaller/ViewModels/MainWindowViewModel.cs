@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reactive;
 using System.Threading.Tasks;
 using DazContentInstaller.Database;
+using DazContentInstaller.Extensions;
 using DazContentInstaller.Models;
 using DazContentInstaller.Services;
 using DynamicData;
@@ -47,6 +48,14 @@ public class MainWindowViewModel : ViewModelBase
     {
         get => _currentSelectedAssetLibrary;
         set => SetProperty(ref _currentSelectedAssetLibrary, value);
+    }
+
+    private string? _selectedInstalledAssetDetails;
+
+    public string? SelectedInstalledAssetDetails
+    {
+        get => _selectedInstalledAssetDetails ?? "Selected an asset to see details";
+        set => SetProperty(ref _selectedInstalledAssetDetails, value);
     }
 
     private bool _installButtonEnabled;
@@ -131,8 +140,13 @@ public class MainWindowViewModel : ViewModelBase
         InstalledArchivesTree.Clear();
 
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        var archives = await dbContext.Archives
-            .Where(d => d.Status == ArchiveStatus.Installed)
+        var archivesQuery = dbContext.Archives
+            .Where(d => d.Status == ArchiveStatus.Installed);
+
+        if (CurrentSelectedAssetLibrary is not null)
+            archivesQuery = archivesQuery.Where(d => d.AssetLibraryId == CurrentSelectedAssetLibrary.Id);
+
+        var archives = await archivesQuery
             .Include(d => d.AssetFiles)
             .OrderBy(d => d.ArchiveName)
             .ToListAsync();
@@ -152,7 +166,7 @@ public class MainWindowViewModel : ViewModelBase
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
         archivesToInstall.ForEach(d => d.Status = ArchiveStatus.Installing);
-        
+
         var progress = new Progress<string>(s => StatusText = s);
 
         ((IProgress<string>)progress).Report($"Start install of {archivesToInstall.Count} archives");
@@ -293,5 +307,26 @@ public class MainWindowViewModel : ViewModelBase
     private void UpdateInstallButton()
     {
         InstallButtonEnabled = LoadedArchives.Count > 0 && CurrentSelectedAssetLibrary != null;
+    }
+
+    public async Task UpdateInstalledAssetDetailsAsync(TreeNode? selectedItem)
+    {
+        if (selectedItem is null)
+            return;
+
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var archive = await dbContext.Archives.FindAsync(selectedItem.DbId);
+        if (archive is null)
+            return;
+
+        var files = await dbContext.AssetFiles.Where(d => d.ArchiveId == archive.Id).ToListAsync();
+        var details = new List<string>
+        {
+            $"File: {Path.GetFileName(archive.ArchiveName)}",
+            $"Size: {FileSizeFormatter.FormatFileSize(files.Sum(f => (long)f.FileSize))}",
+            $"Files: {files.Count:N0}"
+        };
+
+        SelectedInstalledAssetDetails = string.Join(" | ", details);
     }
 }
