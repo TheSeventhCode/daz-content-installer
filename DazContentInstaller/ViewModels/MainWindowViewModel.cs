@@ -110,7 +110,8 @@ public class MainWindowViewModel : ViewModelBase
         RefreshInstalledAssets = ReactiveCommand.CreateFromTask(LoadInstalledArchivesAsync);
     }
 
-    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory, SettingsService settingsService) : this()
+    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        SettingsService settingsService) : this()
     {
         _dbContextFactory = dbContextFactory;
         _settingsService = settingsService;
@@ -174,8 +175,18 @@ public class MainWindowViewModel : ViewModelBase
         ((IProgress<string>)progress).Report($"Start install of {archivesToInstall.Count} archives");
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-        var groupedArchives = archivesToInstall.GroupBy(a =>
-            Path.GetDirectoryName(a.FilePath));
+        var archivesToInstallNames = archivesToInstall.Select(GetLoadedArchiveName).ToArray();
+        var existingArchives = await dbContext.Archives
+            .Where(a => archivesToInstallNames.Contains(a.ArchiveName))
+            .ToListAsync();
+
+        var loadedArchivesToSkip = archivesToInstall
+            .IntersectBy(existingArchives.Select(d => d.ArchiveName), GetLoadedArchiveName).ToList();
+        loadedArchivesToSkip.ForEach(d => d.Status = ArchiveStatus.Duplicate);
+
+        var groupedArchives = archivesToInstall
+            .Except(loadedArchivesToSkip)
+            .GroupBy(a => Path.GetDirectoryName(a.FilePath));
 
         foreach (var group in groupedArchives)
         {
@@ -185,9 +196,7 @@ public class MainWindowViewModel : ViewModelBase
 
             foreach (var archive in group)
             {
-                var name = archive.Metadata.TryGetValue("ProductName", out var productName)
-                    ? productName.ToString()!
-                    : archive.Name;
+                var name = GetLoadedArchiveName(archive);
 
                 var dbArchive = new Archive
                 {
@@ -220,6 +229,11 @@ public class MainWindowViewModel : ViewModelBase
         ((IProgress<string>)progress).Report($"Installed {archivesToInstall.Count} archives");
     }
 
+    private static string GetLoadedArchiveName(LoadedArchive archive) =>
+        archive.Metadata.TryGetValue("ProductName", out var productName)
+            ? productName.ToString()!
+            : archive.Name;
+
     private async Task UninstallArchiveAsync()
     {
         if (!SelectedInstallNodes.Any())
@@ -233,7 +247,7 @@ public class MainWindowViewModel : ViewModelBase
             .Include(a => a.AssetFiles)
             .Where(a => selectedInstallArchiveIds.Contains(a.Id))
             .ToListAsync();
-        
+
         if (archives.Count < 1)
             return;
 
@@ -251,11 +265,11 @@ public class MainWindowViewModel : ViewModelBase
         {
             var uninstaller = new DazArchiveUninstaller(archive);
             uninstaller.UninstallArchive(deleteFileExceptions.Select(d => d.InstalledPath!).ToHashSet());
-            
+
             dbContext.Archives.Remove(archive);
             await dbContext.SaveChangesAsync();
         }
-        
+
         await LoadInstalledArchivesAsync();
     }
 

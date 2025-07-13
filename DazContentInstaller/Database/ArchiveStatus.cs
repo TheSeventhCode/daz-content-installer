@@ -6,6 +6,6 @@ public enum ArchiveStatus
     Loading,
     Installed,
     Installing,
-    Invalid,
+    Duplicate,
     Error
 }

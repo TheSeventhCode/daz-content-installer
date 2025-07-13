@@ -20,6 +20,7 @@ public class StatusToColorConverter : IValueConverter
             ArchiveStatus.Loading => Brushes.Blue,
             ArchiveStatus.Ready => Brushes.Orange,
             ArchiveStatus.Installed => Brushes.DarkGreen,
+            ArchiveStatus.Duplicate => Brushes.Brown,
             _ => Brushes.Gray
         };
     }
