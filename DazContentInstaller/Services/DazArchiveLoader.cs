@@ -3,17 +3,20 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Avalonia.Rendering;
 using DazContentInstaller.Database;
 using DazContentInstaller.Models;
 using SharpSevenZip;
+using SharpSevenZip.Exceptions;
 
 namespace DazContentInstaller.Services;
 
-public class DazArchiveLoader : IDisposable
+public class DazArchiveLoader : IAsyncDisposable
 {
-    private readonly DirectoryInfo _tempDirectory;
+    public DirectoryInfo TempDirectory { get; }
     private readonly string _baseArchivePath;
 
     private readonly Dictionary<string, AssetType> _folderToAssetType = new()
@@ -46,17 +49,18 @@ public class DazArchiveLoader : IDisposable
 
     private readonly HashSet<string> _packagedArchiveFileExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".jpg", ".png", ".zip", ".rar"
+        ".jpg", ".png", ".zip", ".rar", ".txt"
     };
 
     private static readonly string[] StandardAssetsBasePaths =
         ["data", "documentation", "people", "props", "environments", "runtime", "scene", "scripts"];
 
     private static readonly string[] MetadataFiles = ["Supplement.dsx", "manifest.json", "ProductInformation.json"];
+    private static readonly string[] ArchiveExtensions = ["zip", "rar", "7z"];
 
     public DazArchiveLoader(string baseArchivePath)
     {
-        _tempDirectory = Directory.CreateTempSubdirectory("DazContentLoader");
+        TempDirectory = Directory.CreateTempSubdirectory("DazContentLoader");
         _baseArchivePath = baseArchivePath;
     }
 
@@ -66,42 +70,82 @@ public class DazArchiveLoader : IDisposable
 
         var archiveName = Path.GetFileName(_baseArchivePath);
         progress?.Report($"Reading {archiveName}...");
-        using var archiveFile = new SharpSevenZipExtractor(_baseArchivePath);
 
-        await archiveFile.ExtractArchiveAsync(_tempDirectory.FullName);
-
-        progress?.Report($"Analyzing {archiveName} contents...");
-
-        if (archiveFile.ArchiveFileNames.All(d => _packagedArchiveFileExtensions.Contains(Path.GetExtension(d))))
-            archives.AddRange(await DigSubArchivesAsync(progress));
-        else
+        try
         {
-            var archive = new LoadedArchive
-            {
-                FilePath = _baseArchivePath,
-                Name = Path.GetFileNameWithoutExtension(_baseArchivePath),
-                Status = ArchiveStatus.Loading,
-                IsPartOfParentArchive = false
-            };
+            using var archiveFile = new SharpSevenZipExtractor(_baseArchivePath);
+            if (!archiveFile.Check())
+                throw new ExtractionFailedException("Archive file could not be read or is corrupted.");
 
-            progress?.Report($"Reading {archiveName} contents...");
-            await HandleArchiveAsync(archive, archiveFile, progress);
-            archives.Add(archive);
+            await archiveFile.ExtractArchiveAsync(TempDirectory.FullName);
+
+            progress?.Report($"Analyzing {archiveName} contents...");
+
+            if (archiveFile.ArchiveFileData
+                .Where(d => !d.IsDirectory)
+                .All(d => _packagedArchiveFileExtensions.Contains(
+                    Path.GetExtension(d.FileName))))
+                archives.AddRange(await DigSubArchivesAsync(progress));
+            else
+            {
+                var archive = new LoadedArchive
+                {
+                    FilePath = _baseArchivePath,
+                    Name = Path.GetFileNameWithoutExtension(_baseArchivePath),
+                    Status = ArchiveStatus.Loading,
+                    IsPartOfParentArchive = false
+                };
+
+                progress?.Report($"Reading {archiveName} contents...");
+                await HandleArchiveAsync(archive, archiveFile, progress);
+                archives.Add(archive);
+            }
         }
+        catch (SharpSevenZipException ex)
+        {
+            await Console.Error.WriteLineAsync(ex.Message);
+            throw;
+        }
+
 
         return archives;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _tempDirectory.Delete(true);
+        var retries = 0;
+        while (true)
+        {
+            try
+            {
+                TempDirectory.Delete(true);
+                break;
+            }
+            catch (IOException)
+            {
+                if (retries > 10)
+                {
+                    throw;
+                }
+
+                await Task.Delay(250);
+                retries++;
+            }
+        }
+    }
+
+    public void Cleanup()
+    {
+        if (TempDirectory.Exists)
+            TempDirectory.Delete(true);
     }
 
     private async Task<List<LoadedArchive>> DigSubArchivesAsync(IProgress<string>? progress)
     {
         var archives = new List<LoadedArchive>();
 
-        foreach (var subarchive in _tempDirectory.GetFiles().Where(fi => Path.GetExtension(fi.Name).EndsWith("zip")))
+        foreach (var subarchive in TempDirectory.EnumerateFiles("*", SearchOption.AllDirectories)
+                     .Where(fi => ArchiveExtensions.Any(e => Path.GetExtension(fi.Name).EndsWith(e))))
         {
             progress?.Report($"Reading sub-archive {subarchive.Name}...");
 
@@ -113,7 +157,10 @@ public class DazArchiveLoader : IDisposable
                 IsPartOfParentArchive = true
             };
 
-            var subArchiveFile = new SharpSevenZipExtractor(subarchive.FullName);
+            if (subarchive.DirectoryName != TempDirectory.FullName)
+                archive.CustomSubArchiveDirectory = subarchive.Directory!.Name;
+
+            using var subArchiveFile = new SharpSevenZipExtractor(subarchive.FullName);
             if (IsTemplateArchive(subArchiveFile))
                 continue;
 
@@ -151,8 +198,11 @@ public class DazArchiveLoader : IDisposable
 
     private static string? DigArchiveBaseDirectory(IEnumerable<string> fileNames, string? starter = null)
     {
+        var depth = 0;
         while (true)
         {
+            if (depth > 10) return starter;
+
             var basePaths = fileNames.GroupBy(d => d.Split(Path.DirectorySeparatorChar).First()).ToList();
             if (StandardAssetsBasePaths.Any(b =>
                     basePaths.Any(p => p.Key.Equals(b, StringComparison.OrdinalIgnoreCase)))) return starter;
@@ -161,6 +211,7 @@ public class DazArchiveLoader : IDisposable
                 basePaths.SelectMany(g => g.Select(p => p.Split(g.Key + Path.DirectorySeparatorChar).Last()));
             fileNames = deeperLevel;
             starter = basePaths.First().Key;
+            depth++;
         }
     }
 

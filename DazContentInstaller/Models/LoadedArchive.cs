@@ -20,6 +20,7 @@ public class LoadedArchive : ViewModelBase
     }
 
     public string? CustomAssetBaseDirectory { get; set; }
+    public string? CustomSubArchiveDirectory { get; set; }
 
     public string FilePath
     {

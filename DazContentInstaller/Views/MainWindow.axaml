@@ -57,7 +57,7 @@
                     
                     <!-- Drop Zone -->
                     <Border Grid.Row="1" Name="DropZone" Background="#F8F8F8" BorderBrush="#CCCCCC" BorderThickness="2"
-                            CornerRadius="8" Height="120" Margin="0,0,0,15">
+                            CornerRadius="8" Height="120" Margin="0,0,0,15" DragDrop.AllowDrop="True">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Top" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <TextBlock Text="📦" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,5" />
@@ -83,7 +83,7 @@
                                     <DataGridTextColumn Header="Name"
                                                         Binding="{Binding DataType=models:LoadedArchive,Path=Name}"
                                                         Width="*" IsReadOnly="True" />
-                                    <DataGridTemplateColumn Header="Categories" Width="150">
+                                    <DataGridTemplateColumn Header="Categories" MinWidth="150">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ItemsControl ItemsSource="{Binding Categories}" Padding="0, 3"
@@ -106,7 +106,7 @@
                                                                     VerticalAlignment="Center"
                                                                     HorizontalAlignment="Center"
                                                                     FontStyle="Italic"
-                                                                    FontSize="12" />
+                                                                    FontSize="12" Margin="5 0"/>
                                                             </Border>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>

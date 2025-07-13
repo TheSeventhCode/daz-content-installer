@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
@@ -12,6 +13,8 @@ using DazContentInstaller.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using MsBox.Avalonia;
 using MsBox.Avalonia.Dto;
+using MsBox.Avalonia.Enums;
+using MsBox.Avalonia.Models;
 
 namespace DazContentInstaller.Views;
 
@@ -34,18 +37,25 @@ public partial class MainWindow : Window
 
     private async Task OnDrop(object? sender, DragEventArgs e)
     {
-        DropZone.Background = Avalonia.Media.Brushes.Transparent;
+        try
+        {
+            DropZone.Background = Avalonia.Media.Brushes.Transparent;
 
-        if (!e.Data.Contains(DataFormats.Files)) return;
+            if (!e.Data.Contains(DataFormats.Files)) return;
 
-        var files = e.Data.GetFiles();
-        var zipFiles = files?.Where(f =>
-            _allowedExtensions.Any(ae => f.Name.EndsWith(ae, StringComparison.OrdinalIgnoreCase)));
+            var files = e.Data.GetFiles();
+            var zipFiles = files?.Where(f =>
+                _allowedExtensions.Any(ae => f.Name.EndsWith(ae, StringComparison.OrdinalIgnoreCase)));
 
-        if (zipFiles == null) return;
+            if (zipFiles == null) return;
 
-        foreach (var file in zipFiles)
-            await ViewModel.LoadArchiveFileAsync(file.Path.LocalPath);
+            foreach (var file in zipFiles)
+                await ViewModel.LoadArchiveFileAsync(file.Path.LocalPath);
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorMessageBox(ex);
+        }
     }
 
     private void OnDragOver(object? sender, DragEventArgs e)
@@ -71,7 +81,8 @@ public partial class MainWindow : Window
                 AllowMultiple = true,
                 FileTypeFilter =
                 [
-                    new FilePickerFileType("ZIP Archives") { Patterns = _allowedExtensions.Select(ae => $"*{ae}").ToArray() },
+                    new FilePickerFileType("ZIP Archives")
+                        { Patterns = _allowedExtensions.Select(ae => $"*{ae}").ToArray() },
                     new FilePickerFileType("All Files") { Patterns = ["*"] }
                 ]
             });
@@ -93,7 +104,7 @@ public partial class MainWindow : Window
         {
             if (Application.Current?.ApplicationLifetime is null)
                 return;
-            
+
             await ViewModel.LoadAssetLibrariesAsync();
             await ViewModel.LoadInstalledArchivesAsync();
         }
@@ -111,6 +122,10 @@ public partial class MainWindow : Window
             ContentMessage = ex.Message,
             Icon = MsBox.Avalonia.Enums.Icon.Error,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ButtonDefinitions =
+            [
+                new ButtonDefinition { Name = "Ok", IsDefault = true }
+            ]
         });
 
         await box.ShowAsync();
@@ -122,7 +137,8 @@ public partial class MainWindow : Window
         {
             var settingsWindow = new SettingsWindow()
             {
-                DataContext = ServiceCollectionExtensions.GetServiceProvider().GetRequiredService<SettingsWindowViewModel>()
+                DataContext = ServiceCollectionExtensions.GetServiceProvider()
+                    .GetRequiredService<SettingsWindowViewModel>()
             };
 
             var result = await settingsWindow.ShowDialog<bool>(this);
@@ -140,7 +156,7 @@ public partial class MainWindow : Window
     private void ArchivesDataGrid_OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm || sender is not DataGrid grid) return;
-        
+
         vm.SelectedArchives.Clear();
         foreach (var item in grid.SelectedItems) vm.SelectedArchives.Add((LoadedArchive)item);
     }
@@ -164,7 +180,7 @@ public partial class MainWindow : Window
         try
         {
             if (DataContext is not MainWindowViewModel vm || sender is not TreeView tree) return;
-            
+
             await vm.UpdateInstalledAssetDetailsAsync(e.AddedItems.Cast<TreeNode>().FirstOrDefault());
         }
         catch (Exception ex)

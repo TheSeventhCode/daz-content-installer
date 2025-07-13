@@ -23,9 +23,9 @@ public class DazArchiveInstaller : IDisposable
     {
         progress?.Report($"Installing {_loadedArchive.Name}...");
 
-        var archivePath = Path.Combine(existingPackageString, Path.GetFileName(_loadedArchive.FilePath));
+        var archivePath = Path.Combine(existingPackageString, _loadedArchive.CustomSubArchiveDirectory ?? string.Empty, Path.GetFileName(_loadedArchive.FilePath));
         var extractionDestinationPath =
-            Path.Combine(existingPackageString, Path.GetFileNameWithoutExtension(_loadedArchive.FilePath));
+            Path.Combine(existingPackageString, _loadedArchive.CustomSubArchiveDirectory ?? string.Empty, Path.GetFileNameWithoutExtension(_loadedArchive.FilePath));
 
         await ExtractArchiveAsync(archivePath, extractionDestinationPath);
 

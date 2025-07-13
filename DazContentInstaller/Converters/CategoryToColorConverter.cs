@@ -12,16 +12,17 @@ public class CategoryToColorConverter : IValueConverter
         var category = value as string;
         return category switch
         {
-            "characters" => Brushes.Red,
+            "characters" => Brushes.Bisque,
+            "anatomy" => Brushes.Red, 
             "clothing" or "wardrobe" => Brushes.Blue,
             "hair" => Brushes.Green,
             "props" or "vehicles" => Brushes.Orange,
-            "environments" or "scenes" => Brushes.Orange,
+            "environments" or "scenes" => Brushes.OrangeRed,
             "poses" or "animations" => Brushes.Aqua,
-            "materials" or "shaders" => Brushes.Brown,
-            "lights" => Brushes.White,
-            "cameras" => Brushes.Black,
-            "scripts" => Brushes.Brown,
+            "materials" or "shaders" => Brushes.Violet,
+            "lights" => Brushes.Pink,
+            "cameras" => Brushes.DarkSlateGray,
+            "scripts" => Brushes.Black,
             _ => Brushes.Gray
         };
     }

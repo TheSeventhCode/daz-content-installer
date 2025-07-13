@@ -245,27 +245,28 @@ public class MainWindowViewModel : ViewModelBase
 
         dbContext.Archives.Remove(archive);
         await dbContext.SaveChangesAsync();
-        await dbContext.SaveChangesAsync();
 
         await LoadInstalledArchivesAsync();
     }
 
     public async Task LoadArchiveFileAsync(string filePath)
     {
+        var progress = new Progress<string>(s => StatusText = s);
+
+        DirectoryInfo? tempDirectory = null;
         try
         {
-            var progress = new Progress<string>(s => StatusText = s);
-
-            using var loader = new DazArchiveLoader(filePath);
+            await using var loader = new DazArchiveLoader(filePath);
+            tempDirectory = loader.TempDirectory;
             var result = await loader.LoadArchiveAsync(progress);
 
             LoadedArchives.Add(result);
             UpdateInstallButton();
             ((IProgress<string>)progress).Report($"Finished loading {Path.GetFileName(filePath)}");
         }
-        catch (Exception ex)
+        catch (IOException)
         {
-            StatusText = $"Error loading {Path.GetFileName(filePath)}: {ex.Message}";
+            tempDirectory?.Delete(true);
         }
     }
 
