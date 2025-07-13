@@ -24,6 +24,7 @@ public class MainWindowViewModel : ViewModelBase
     public ObservableCollection<TreeNode> DisplayedInstalledArchives { get; } = [];
 
     private ObservableCollection<LoadedArchive> _selectedArchives = [];
+    private ObservableCollection<TreeNode> _selectedInstallNodes = [];
 
     public ObservableCollection<LoadedArchive> SelectedArchives
     {
@@ -31,12 +32,12 @@ public class MainWindowViewModel : ViewModelBase
         set => SetProperty(ref _selectedArchives, value);
     }
 
-    public TreeNode? SelectedInstallNode
+    public ObservableCollection<TreeNode> SelectedInstallNodes
     {
-        get => _selectedInstallNode;
+        get => _selectedInstallNodes;
         set
         {
-            SetProperty(ref _selectedInstallNode, value);
+            SetProperty(ref _selectedInstallNodes, value);
             OnPropertyChanged(nameof(UninstallButtonEnabled));
         }
     }
@@ -76,10 +77,9 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public bool UninstallButtonEnabled => SelectedInstallNode is not null && SelectedInstallNode.Parent is null;
+    public bool UninstallButtonEnabled => SelectedInstallNodes.Any() && SelectedInstallNodes.All(d => d.Parent is null);
 
     private string _statusText = "Ready";
-    private TreeNode? _selectedInstallNode;
     private int _installedAssetsCount;
     private string _installedAssetsSearch = string.Empty;
 
@@ -220,32 +220,40 @@ public class MainWindowViewModel : ViewModelBase
 
     private async Task UninstallArchiveAsync()
     {
-        if (SelectedInstallNode is null)
+        if (!SelectedInstallNodes.Any())
             return;
 
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-        var archive = await dbContext.Archives
+        var selectedInstallArchiveIds = SelectedInstallNodes.Select(n => n.DbId).ToArray();
+        var archives = await dbContext.Archives
             .Include(a => a.AssetLibrary)
             .Include(a => a.AssetFiles)
-            .FirstOrDefaultAsync(a => a.Id == SelectedInstallNode.DbId);
-        if (archive is null)
+            .Where(a => selectedInstallArchiveIds.Contains(a.Id))
+            .ToListAsync();
+        
+        if (archives.Count < 1)
             return;
 
+        var archiveIds = archives.Select(a => a.Id).ToArray();
         var deleteFileExceptions = await dbContext.AssetFiles
-            .Where(f => f.ArchiveId != archive.Id && f.InstalledPath != null)
+            .Where(f => !archiveIds.Contains(f.ArchiveId) && f.InstalledPath != null)
             .ToListAsync();
 
         deleteFileExceptions = deleteFileExceptions
-            .Where(f => archive.AssetFiles.Any(a =>
-                a.InstalledPath!.Equals(f.InstalledPath, StringComparison.OrdinalIgnoreCase))).Distinct().ToList();
+            .Where(e => archives.SelectMany(a => a.AssetFiles)
+                .Any(f => f.InstalledPath!.Equals(e.InstalledPath, StringComparison.OrdinalIgnoreCase)))
+            .Distinct().ToList();
 
-        var uninstaller = new DazArchiveUninstaller(archive);
-        uninstaller.UninstallArchive(deleteFileExceptions.Select(d => d.InstalledPath!).ToHashSet());
-
-        dbContext.Archives.Remove(archive);
-        await dbContext.SaveChangesAsync();
-
+        foreach (var archive in archives)
+        {
+            var uninstaller = new DazArchiveUninstaller(archive);
+            uninstaller.UninstallArchive(deleteFileExceptions.Select(d => d.InstalledPath!).ToHashSet());
+            
+            dbContext.Archives.Remove(archive);
+            await dbContext.SaveChangesAsync();
+        }
+        
         await LoadInstalledArchivesAsync();
     }
 
@@ -280,18 +288,18 @@ public class MainWindowViewModel : ViewModelBase
         }
 
         var filtered = InstalledArchivesTree
-            .Select(node => FilterTree(node, searchTerm, node.Parent))
+            .Select(node => FilterTree(node, searchTerm))
             .Where(node => node is not null)
             .Select(node => node!);
 
         DisplayedInstalledArchives.AddRange(filtered);
     }
 
-    private static TreeNode? FilterTree(TreeNode node, string searchTerm, TreeNode? parent)
+    private static TreeNode? FilterTree(TreeNode node, string searchTerm)
     {
         // Filter children recursively
         var filteredChildren = node.Children
-            .Select(child => FilterTree(child, searchTerm, child.Parent))
+            .Select(child => FilterTree(child, searchTerm))
             .Where(child => child is not null)
             .Select(child => child!)
             .ToList();
@@ -315,6 +323,7 @@ public class MainWindowViewModel : ViewModelBase
         if (selectedItem is null)
             return;
 
+        OnPropertyChanged(nameof(UninstallButtonEnabled));
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
         var archive = await dbContext.Archives.FindAsync(selectedItem.DbId);
         if (archive is null)

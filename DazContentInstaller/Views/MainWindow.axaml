@@ -194,8 +194,8 @@
 
                     <!-- Installed Assets List -->
                     <TreeView Grid.Row="1"
-                              SelectionMode="Single" ItemsSource="{Binding DisplayedInstalledArchives}"
-                              SelectedItem="{Binding SelectedInstallNode}" SelectionChanged="InstalledArchivesTreeView_OnSelectionChanged">
+                              SelectionMode="Multiple" ItemsSource="{Binding DisplayedInstalledArchives}"
+                              SelectedItems="{Binding SelectedInstallNodes}" SelectionChanged="InstalledArchivesTreeView_OnSelectionChanged">
                         <TreeView.ItemTemplate>
                             <TreeDataTemplate ItemsSource="{Binding Children}">
                                 <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
