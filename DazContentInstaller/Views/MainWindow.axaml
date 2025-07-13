@@ -13,6 +13,7 @@
 
     <Window.Resources>
         <converters:CategoryToColorConverter x:Key="CategoryToColorConverter" />
+        <converters:StatusToColorConverter x:Key="StatusToColorConverter" />
     </Window.Resources>
 
     <Design.DataContext>
@@ -115,9 +116,24 @@
                                     <DataGridTextColumn Header="Size"
                                                         Binding="{Binding DataType=models:LoadedArchive,Path=FileSize}"
                                                         Width="100" IsReadOnly="True" />
-                                    <DataGridTextColumn Header="Status"
-                                                        Binding="{Binding DataType=models:LoadedArchive,Path=Status}"
-                                                        Width="100" IsReadOnly="True" />
+                                    <DataGridTemplateColumn Header="Status" Width="100">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Background="{Binding DataType=models:LoadedArchive,Path=Status, Converter={StaticResource StatusToColorConverter}}"
+                                                    CornerRadius="8" Padding="4,2"
+                                                    Margin="0,0,4,0" MaxHeight="20" MaxWidth="100">
+                                                    <TextBlock
+                                                        Text="{Binding DataType=models:LoadedArchive,Path=Status}"
+                                                        Foreground="White"
+                                                        VerticalAlignment="Center"
+                                                        HorizontalAlignment="Center"
+                                                        FontStyle="Italic"
+                                                        FontSize="12" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>
@@ -172,12 +188,13 @@
 
                         <!-- Search Box -->
                         <TextBox Grid.Row="0" Watermark="Search installed assets..."
-                                 Text="{Binding InstalledAssetsSearch}"/>
+                                 Text="{Binding InstalledAssetsSearch}" />
                     </StackPanel>
 
                     <!-- Installed Assets List -->
                     <TreeView Grid.Row="1"
-                              SelectionMode="Single" ItemsSource="{Binding DisplayedInstalledArchives}" SelectedItem="{Binding SelectedInstallNode}">
+                              SelectionMode="Single" ItemsSource="{Binding DisplayedInstalledArchives}"
+                              SelectedItem="{Binding SelectedInstallNode}">
                         <TreeView.ItemTemplate>
                             <TreeDataTemplate ItemsSource="{Binding Children}">
                                 <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
@@ -213,10 +230,10 @@
                 BorderThickness="0,1,0,0"
                 Padding="10,5">
             <Grid ColumnDefinitions="*,Auto">
-                <TextBlock 
-                           Grid.Column="0"
-                           Text="{Binding StatusText, UpdateSourceTrigger=PropertyChanged}"
-                           VerticalAlignment="Center" />
+                <TextBlock
+                    Grid.Column="0"
+                    Text="{Binding StatusText, UpdateSourceTrigger=PropertyChanged}"
+                    VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1"
                            Text="{Binding InstalledAssetsCountText}"
                            VerticalAlignment="Center"

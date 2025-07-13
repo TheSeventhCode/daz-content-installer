@@ -72,7 +72,7 @@ public class MainWindowViewModel : ViewModelBase
     private string _statusText = "Ready";
     private TreeNode? _selectedInstallNode;
     private int _installedAssetsCount;
-    private string _installedAssetsSearch;
+    private string _installedAssetsSearch = string.Empty;
 
     public string StatusText
     {
@@ -151,7 +151,8 @@ public class MainWindowViewModel : ViewModelBase
 
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
-
+        archivesToInstall.ForEach(d => d.Status = ArchiveStatus.Installing);
+        
         var progress = new Progress<string>(s => StatusText = s);
 
         ((IProgress<string>)progress).Report($"Start install of {archivesToInstall.Count} archives");
@@ -241,8 +242,8 @@ public class MainWindowViewModel : ViewModelBase
         {
             var progress = new Progress<string>(s => StatusText = s);
 
-            using var archive = new DazArchiveLoader(filePath);
-            var result = await archive.LoadArchiveAsync(progress);
+            using var loader = new DazArchiveLoader(filePath);
+            var result = await loader.LoadArchiveAsync(progress);
 
             LoadedArchives.Add(result);
             UpdateInstallButton();
