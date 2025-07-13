@@ -22,19 +22,6 @@ public partial class SettingsWindow : Window
         InitializeComponent();
     }
 
-    private async void OnBrowseTempDirectoryClick(object? sender, RoutedEventArgs e)
-    {
-        var result = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-        {
-            Title = "Select Temporary Directory",
-            AllowMultiple = false
-        });
-
-        if (result.Count < 1) return;
-
-        ViewModel.TempDirectory = result[0].Path.LocalPath;
-    }
-
     private void OnCancelClick(object? sender, RoutedEventArgs e)
     {
         Close(false);

@@ -11,10 +11,12 @@ public class DazArchiveInstaller : IDisposable
 {
     private readonly LoadedArchive _loadedArchive;
     private readonly DirectoryInfo _tempDirectory;
+    private readonly AppSettings _settings;
 
-    public DazArchiveInstaller(LoadedArchive loadedArchive)
+    public DazArchiveInstaller(LoadedArchive loadedArchive, AppSettings settings)
     {
         _loadedArchive = loadedArchive;
+        _settings = settings;
         _tempDirectory = Directory.CreateTempSubdirectory("DazContentInstaller");
     }
 
@@ -47,6 +49,16 @@ public class DazArchiveInstaller : IDisposable
             archive.InstalledPath = archive.InstalledPath.StartsWith("content", StringComparison.OrdinalIgnoreCase)
                 ? archive.InstalledPath[8..]
                 : archive.InstalledPath;
+        }
+
+        if (_settings.CreateBackupBeforeInstall)
+        {
+            var archiveBackupPath = Path.Combine(libraryPath, "ArchiveBackup");
+            Directory.CreateDirectory(archiveBackupPath);
+            
+            archiveBackupPath = Path.Combine(archiveBackupPath, Path.GetFileName(archivePath));
+            
+            File.Copy(archivePath, archiveBackupPath, true);
         }
     }
 

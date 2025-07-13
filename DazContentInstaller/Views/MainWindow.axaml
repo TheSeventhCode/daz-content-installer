@@ -30,7 +30,6 @@
                            VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
                     <Button Click="OnSettingsClick" Content="Settings" Padding="10,5" Background="White" />
-                    <Button Name="AboutButton" Content="About" Padding="10,5" Background="White" />
                 </StackPanel>
             </Grid>
         </Border>

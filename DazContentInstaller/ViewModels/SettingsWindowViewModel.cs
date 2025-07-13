@@ -20,7 +20,6 @@ public class SettingsWindowViewModel : ViewModelBase
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory = null!;
     private bool _autoDetectDazLibraries = true;
     private bool _createBackupBeforeInstall = true;
-    private string _tempDirectory = string.Empty;
 
     public bool AutoDetectDazLibraries
     {
@@ -41,17 +40,7 @@ public class SettingsWindowViewModel : ViewModelBase
             SetProperty(ref _createBackupBeforeInstall, value);
         }
     }
-
-    public string TempDirectory
-    {
-        get => _tempDirectory;
-        set
-        {
-            _settingsService.CurrentSettings.TempDirectory = value;
-            SetProperty(ref _tempDirectory, value);
-        }
-    }
-
+    
     public SettingsWindowViewModel(SettingsService settingsService,
         IDbContextFactory<ApplicationDbContext> dbContextFactory) : this()
     {
@@ -89,7 +78,6 @@ public class SettingsWindowViewModel : ViewModelBase
         await _settingsService.LoadSettingsAsync();
         AutoDetectDazLibraries = _settingsService.CurrentSettings.AutoDetectDazLibraries;
         CreateBackupBeforeInstall = _settingsService.CurrentSettings.CreateBackupBeforeInstall;
-        TempDirectory = _settingsService.CurrentSettings.TempDirectory;
 
         await ReloadLibrariesAsync();
     }
@@ -98,7 +86,6 @@ public class SettingsWindowViewModel : ViewModelBase
     {
         _settingsService.CurrentSettings.AutoDetectDazLibraries = AutoDetectDazLibraries;
         _settingsService.CurrentSettings.CreateBackupBeforeInstall = CreateBackupBeforeInstall;
-        _settingsService.CurrentSettings.TempDirectory = TempDirectory;
 
         await _settingsService.SaveSettingsAsync();
 

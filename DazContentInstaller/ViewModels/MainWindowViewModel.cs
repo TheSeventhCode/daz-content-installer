@@ -19,6 +19,7 @@ namespace DazContentInstaller.ViewModels;
 public class MainWindowViewModel : ViewModelBase
 {
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory = null!;
+    private readonly SettingsService _settingsService = null!;
     public ObservableCollection<LoadedArchive> LoadedArchives { get; set; } = [];
     private InstalledArchiveTree InstalledArchivesTree { get; } = [];
     public ObservableCollection<TreeNode> DisplayedInstalledArchives { get; } = [];
@@ -109,9 +110,10 @@ public class MainWindowViewModel : ViewModelBase
         RefreshInstalledAssets = ReactiveCommand.CreateFromTask(LoadInstalledArchivesAsync);
     }
 
-    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory) : this()
+    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory, SettingsService settingsService) : this()
     {
         _dbContextFactory = dbContextFactory;
+        _settingsService = settingsService;
     }
 
     private void ClearLoadedArchives()
@@ -200,7 +202,7 @@ public class MainWindowViewModel : ViewModelBase
                 dbContext.Archives.Add(dbArchive);
                 await dbContext.SaveChangesAsync();
 
-                using var installer = new DazArchiveInstaller(archive);
+                using var installer = new DazArchiveInstaller(archive, _settingsService.CurrentSettings);
                 await installer.InstallAsync(CurrentSelectedAssetLibrary.Path, tempDirectory.FullName,
                     dbArchive.CustomAssetsBasePath, progress);
 

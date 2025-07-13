@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net.Mail;
 using System.Text.Json;
 using System.Threading.Tasks;
 using DazContentInstaller.Database;
@@ -16,17 +15,16 @@ namespace DazContentInstaller.Services;
 public class SettingsService
 {
     private readonly string _settingsPath;
-    private AppSettings _currentSettings;
     private readonly ApplicationDbContext _dbContext;
 
     public SettingsService(IOptions<InstallerConfig> config, ApplicationDbContext dbContext)
     {
         _dbContext = dbContext;
         _settingsPath = config.Value.AppSettingsPath;
-        _currentSettings = new AppSettings();
+        CurrentSettings = new AppSettings();
     }
 
-    public AppSettings CurrentSettings => _currentSettings;
+    public AppSettings CurrentSettings { get; private set; }
 
     public async Task LoadSettingsAsync()
     {
@@ -38,7 +36,7 @@ public class SettingsService
                 var settings = JsonSerializer.Deserialize<AppSettings>(json);
                 if (settings != null)
                 {
-                    _currentSettings = settings;
+                    CurrentSettings = settings;
                 }
             }
             else
@@ -51,7 +49,7 @@ public class SettingsService
         {
             // Log error and use default settings
             Console.WriteLine($"Error loading settings: {ex.Message}");
-            _currentSettings = new AppSettings();
+            CurrentSettings = new AppSettings();
         }
     }
 
@@ -59,7 +57,7 @@ public class SettingsService
     {
         try
         {
-            var json = JsonSerializer.Serialize(_currentSettings, new JsonSerializerOptions
+            var json = JsonSerializer.Serialize(CurrentSettings, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
@@ -69,38 +67,6 @@ public class SettingsService
         {
             throw new InvalidOperationException($"Failed to save settings: {ex.Message}", ex);
         }
-    }
-
-    public async Task AddAssetLibraryAsync(AssetLibrary library)
-    {
-        await _dbContext.AssetLibraries.AddAsync(library);
-        await _dbContext.SaveChangesAsync();
-    }
-
-    public async Task RemoveAssetLibraryAsync(Guid id)
-    {
-        var library = await _dbContext.AssetLibraries.FindAsync(id);
-        if (library is not null)
-        {
-            _dbContext.AssetLibraries.Remove(library);
-            await _dbContext.SaveChangesAsync();
-        }
-    }
-
-    public async Task SetDefaultLibraryAsync(Guid id)
-    {
-        var libraries = await _dbContext.AssetLibraries.ToListAsync();
-        foreach (var library in libraries)
-        {
-            library.IsDefault = library.Id == id;
-        }
-
-        await _dbContext.SaveChangesAsync();
-    }
-
-    public async Task<AssetLibrary?> GetDefaultLibraryAsync()
-    {
-        return await _dbContext.AssetLibraries.FirstOrDefaultAsync(l => l.IsDefault);
     }
 
     public async Task AutoDetectDazLibrariesAsync()
