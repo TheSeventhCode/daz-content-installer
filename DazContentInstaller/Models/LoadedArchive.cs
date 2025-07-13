@@ -11,6 +11,7 @@ public class LoadedArchive : ViewModelBase
     private ArchiveStatus _status;
     private long _fileSizeBytes;
 
+    public bool IsPartOfParentArchive { get; set; }
     public string Name
     {
         get => _name;
@@ -46,7 +47,7 @@ public class LoadedArchive : ViewModelBase
 
     public AssetType AssetType { get; set; } = AssetType.Unknown;
     public HashSet<string> Categories { get; set; } = [];
-    public List<string> ContainedFiles { get; set; } = [];
+    public List<AssetFile> ContainedFiles { get; set; } = [];
     public Dictionary<string, object> Metadata { get; set; } = new();
     private static string FormatFileSize(long bytes)
     {

@@ -75,7 +75,8 @@ public class DazArchiveLoader : IDisposable
             {
                 FilePath = _baseArchivePath,
                 Name = Path.GetFileNameWithoutExtension(_baseArchivePath),
-                Status = ArchiveStatus.Loading
+                Status = ArchiveStatus.Loading,
+                IsPartOfParentArchive = false
             };
 
             progress?.Report("Reading contents...");
@@ -105,7 +106,8 @@ public class DazArchiveLoader : IDisposable
             {
                 FilePath = Path.Combine(_baseArchivePath, subarchive.Name),
                 Name = Path.Combine(Path.GetFileNameWithoutExtension(_baseArchivePath), subarchive.Name),
-                Status = ArchiveStatus.Loading
+                Status = ArchiveStatus.Loading,
+                IsPartOfParentArchive = true
             };
 
             var subArchive = new SharpSevenZipExtractor(subarchive.FullName);
@@ -143,7 +145,11 @@ public class DazArchiveLoader : IDisposable
         foreach (var fileInfo in archiveFile.ArchiveFileData)
         {
             fileCount++;
-            archive.ContainedFiles.Add(fileInfo.FileName);
+            archive.ContainedFiles.Add(new AssetFile
+            {
+                FileName = fileInfo.FileName,
+                FileSize = fileInfo.Size
+            });
 
             var pathParts = fileInfo.FileName.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
             foreach (var part in pathParts)
@@ -244,8 +250,8 @@ public class DazArchiveLoader : IDisposable
     {
         // Try to improve asset naming based on folder structure
         var topLevelFolders = archive.ContainedFiles
-            .Where(f => !f.StartsWith("__MACOSX")) // Ignore Mac metadata
-            .Select(f => f.Split('/')[0])
+            .Where(f => !f.FileName.StartsWith("__MACOSX")) // Ignore Mac metadata
+            .Select(f => f.FileName.Split('/')[0])
             .Where(f => !string.IsNullOrEmpty(f))
             .GroupBy(f => f)
             .OrderByDescending(g => g.Count())
@@ -263,8 +269,8 @@ public class DazArchiveLoader : IDisposable
 
         // Look for product name in folder structure
         var productFolders = archive.ContainedFiles
-            .Where(f => f.Contains("Product", StringComparison.OrdinalIgnoreCase))
-            .Select(Path.GetDirectoryName)
+            .Where(f => f.FileName.Contains("Product", StringComparison.OrdinalIgnoreCase))
+            .Select(f => Path.GetDirectoryName(f.FileName))
             .FirstOrDefault(d => !string.IsNullOrEmpty(d));
 
         if (!string.IsNullOrEmpty(productFolders))
