@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,7 @@ using DazContentInstaller.Services;
 using DynamicData;
 using Microsoft.EntityFrameworkCore;
 using ReactiveUI;
+using SharpSevenZip;
 
 namespace DazContentInstaller.ViewModels;
 
@@ -55,16 +57,40 @@ public class MainWindowViewModel : ViewModelBase
         set => SetProperty(ref _installButtonEnabled, value);
     }
 
+    public string InstalledAssetsSearch
+    {
+        get => _installedAssetsSearch;
+        set
+        {
+            SetProperty(ref _installedAssetsSearch, value);
+            FilterInstalledAssetsTree(value);
+        }
+    }
+
     public bool UninstallButtonEnabled => SelectedInstallNode is not null && SelectedInstallNode.Parent is null;
 
     private string _statusText = "Ready";
     private TreeNode? _selectedInstallNode;
+    private int _installedAssetsCount;
+    private string _installedAssetsSearch;
 
     public string StatusText
     {
         get => _statusText;
         set => SetProperty(ref _statusText, value);
     }
+
+    private int InstalledAssetsCount
+    {
+        get => _installedAssetsCount;
+        set
+        {
+            SetProperty(ref _installedAssetsCount, value);
+            OnPropertyChanged(nameof(InstalledAssetsCountText));
+        }
+    }
+
+    public string InstalledAssetsCountText => $"{InstalledAssetsCount} assets installed";
 
     public MainWindowViewModel()
     {
@@ -111,10 +137,11 @@ public class MainWindowViewModel : ViewModelBase
             .OrderBy(d => d.ArchiveName)
             .ToListAsync();
 
+        InstalledAssetsCount = archives.Count;
         foreach (var archive in archives)
             InstalledArchivesTree.LoadArchive(archive);
 
-        FilterInstalledAssetsTree(string.Empty);
+        FilterInstalledAssetsTree(InstalledAssetsSearch);
     }
 
     private async Task InstallArchives()
@@ -125,31 +152,55 @@ public class MainWindowViewModel : ViewModelBase
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
 
+        var progress = new Progress<string>(s => StatusText = s);
+
+        ((IProgress<string>)progress).Report($"Start install of {archivesToInstall.Count} archives");
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        foreach (var archive in archivesToInstall)
+
+        var groupedArchives = archivesToInstall.GroupBy(a =>
+            Path.GetDirectoryName(a.FilePath));
+
+        foreach (var group in groupedArchives)
         {
-            var dbArchive = new Archive
+            var tempDirectory = Directory.CreateTempSubdirectory("DazContentInstaller");
+            using var archivePackage = new SharpSevenZipExtractor(group.Key!);
+            await archivePackage.ExtractArchiveAsync(tempDirectory.FullName);
+
+            foreach (var archive in group)
             {
-                ArchiveName = archive.Name,
-                ArchiveSize = archive.FileSizeBytes,
-                Status = archive.Status,
-                AssetLibraryId = CurrentSelectedAssetLibrary.Id
-            };
+                var name = archive.Metadata.TryGetValue("ProductName", out var productName)
+                    ? productName.ToString()!
+                    : archive.Name;
 
-            dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
-            dbContext.Archives.Add(dbArchive);
-            await dbContext.SaveChangesAsync();
+                var dbArchive = new Archive
+                {
+                    ArchiveName = name,
+                    ArchiveSize = archive.FileSizeBytes,
+                    Status = archive.Status,
+                    CustomAssetsBasePath = archive.CustomAssetBaseDirectory,
+                    AssetLibraryId = CurrentSelectedAssetLibrary.Id
+                };
 
-            using var installer = new DazArchiveInstaller(archive);
-            await installer.InstallAsync(CurrentSelectedAssetLibrary.Path);
+                dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
+                dbContext.Archives.Add(dbArchive);
+                await dbContext.SaveChangesAsync();
 
-            dbArchive.Status = ArchiveStatus.Installed;
-            await dbContext.SaveChangesAsync();
+                using var installer = new DazArchiveInstaller(archive);
+                await installer.InstallAsync(CurrentSelectedAssetLibrary.Path, tempDirectory.FullName,
+                    dbArchive.CustomAssetsBasePath, progress);
 
-            LoadedArchives.Remove(archive);
+                dbArchive.Status = ArchiveStatus.Installed;
+                await dbContext.SaveChangesAsync();
+
+                LoadedArchives.Remove(archive);
+
+                await LoadInstalledArchivesAsync();
+            }
+
+            tempDirectory.Delete(true);
         }
 
-        await LoadInstalledArchivesAsync();
+        ((IProgress<string>)progress).Report($"Installed {archivesToInstall.Count} archives");
     }
 
     private async Task UninstallArchiveAsync()
@@ -188,12 +239,14 @@ public class MainWindowViewModel : ViewModelBase
     {
         try
         {
+            var progress = new Progress<string>(s => StatusText = s);
+
             using var archive = new DazArchiveLoader(filePath);
-            var result = await archive.LoadArchiveAsync();
+            var result = await archive.LoadArchiveAsync(progress);
 
             LoadedArchives.Add(result);
             UpdateInstallButton();
-            StatusText = $"Loaded {Path.GetFileName(filePath)}";
+            ((IProgress<string>)progress).Report($"Finished loading {Path.GetFileName(filePath)}");
         }
         catch (Exception ex)
         {
@@ -201,7 +254,7 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public void FilterInstalledAssetsTree(string? searchTerm)
+    private void FilterInstalledAssetsTree(string? searchTerm)
     {
         DisplayedInstalledArchives.Clear();
         if (string.IsNullOrWhiteSpace(searchTerm))

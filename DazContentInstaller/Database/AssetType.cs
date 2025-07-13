@@ -14,5 +14,6 @@ public enum AssetType
     Lights,
     Cameras,
     Scripts,
+    Textures,
     Mixed
 }

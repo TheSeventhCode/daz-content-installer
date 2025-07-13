@@ -18,22 +18,20 @@ public class DazArchiveInstaller : IDisposable
         _tempDirectory = Directory.CreateTempSubdirectory("DazContentInstaller");
     }
 
-    public async Task InstallAsync(string libraryPath)
+    public async Task InstallAsync(string libraryPath, string existingPackageString, string? customBasePath = null,
+        IProgress<string>? progress = null)
     {
-        var archivePath = _loadedArchive.FilePath;
-        var extractionDestinationPath = _tempDirectory.FullName;
-        if (_loadedArchive.IsPartOfParentArchive)
-        {
-            var parentArchivePath = Path.GetDirectoryName(_loadedArchive.FilePath)!;
-            await ExtractArchiveAsync(parentArchivePath, _tempDirectory.FullName);
-            archivePath = Path.Combine(extractionDestinationPath, Path.GetFileName(_loadedArchive.FilePath));
-            extractionDestinationPath = Path.Combine(extractionDestinationPath,
-                Path.GetFileNameWithoutExtension(_loadedArchive.FilePath));
-        }
+        progress?.Report($"Installing {_loadedArchive.Name}...");
+
+        var archivePath = Path.Combine(existingPackageString, Path.GetFileName(_loadedArchive.FilePath));
+        var extractionDestinationPath =
+            Path.Combine(existingPackageString, Path.GetFileNameWithoutExtension(_loadedArchive.FilePath));
 
         await ExtractArchiveAsync(archivePath, extractionDestinationPath);
 
-        var extractionDirectory = new DirectoryInfo(extractionDestinationPath);
+        var extractionDirectory = new DirectoryInfo(string.IsNullOrEmpty(customBasePath)
+            ? extractionDestinationPath
+            : Path.Combine(extractionDestinationPath, customBasePath));
         var contentDirectory = extractionDirectory.GetDirectories()
             .FirstOrDefault(d => d.Name.Equals("content", StringComparison.OrdinalIgnoreCase));
         var archiveBaseDirectory = contentDirectory ?? extractionDirectory;
@@ -42,9 +40,13 @@ public class DazArchiveInstaller : IDisposable
 
         foreach (var archive in _loadedArchive.ContainedFiles)
         {
-            archive.InstalledPath = archive.FileName.StartsWith("content", StringComparison.OrdinalIgnoreCase)
-                ? archive.FileName[8..]
+            archive.InstalledPath = !string.IsNullOrEmpty(customBasePath)
+                ? archive.FileName.Split(customBasePath + Path.DirectorySeparatorChar).Last()
                 : archive.FileName;
+            
+            archive.InstalledPath = archive.InstalledPath.StartsWith("content", StringComparison.OrdinalIgnoreCase)
+                ? archive.InstalledPath[8..]
+                : archive.InstalledPath;
         }
     }
 

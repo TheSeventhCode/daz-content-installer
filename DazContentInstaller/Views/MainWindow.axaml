@@ -172,7 +172,7 @@
 
                         <!-- Search Box -->
                         <TextBox Grid.Row="0" Watermark="Search installed assets..."
-                                 TextChanged="SearchInstalled_OnTextChanged" />
+                                 Text="{Binding InstalledAssetsSearch}"/>
                     </StackPanel>
 
                     <!-- Installed Assets List -->
@@ -213,13 +213,12 @@
                 BorderThickness="0,1,0,0"
                 Padding="10,5">
             <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Name="StatusText"
+                <TextBlock 
                            Grid.Column="0"
-                           Text="{Binding StatusText}"
+                           Text="{Binding StatusText, UpdateSourceTrigger=PropertyChanged}"
                            VerticalAlignment="Center" />
-                <TextBlock Name="AssetCountText"
-                           Grid.Column="1"
-                           Text="0 assets installed"
+                <TextBlock Grid.Column="1"
+                           Text="{Binding InstalledAssetsCountText}"
                            VerticalAlignment="Center"
                            Foreground="#666666" />
             </Grid>

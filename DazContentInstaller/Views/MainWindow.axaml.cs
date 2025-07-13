@@ -79,7 +79,7 @@ public partial class MainWindow : Window
             if (files.Count < 1) return;
 
             foreach (var file in files)
-                await ViewModel.LoadArchiveFileAsync(file.Path.LocalPath.ToString());
+                await ViewModel.LoadArchiveFileAsync(file.Path.LocalPath);
         }
         catch (Exception ex)
         {
@@ -136,12 +136,5 @@ public partial class MainWindow : Window
         
         vm.SelectedArchives.Clear();
         foreach (var item in grid.SelectedItems) vm.SelectedArchives.Add((LoadedArchive)item);
-    }
-
-    private void SearchInstalled_OnTextChanged(object? sender, TextChangedEventArgs e)
-    {
-        if(DataContext is not MainWindowViewModel vm || sender is not TextBox textBox) return;
-
-        vm.FilterInstalledAssetsTree(textBox.Text);
     }
 }

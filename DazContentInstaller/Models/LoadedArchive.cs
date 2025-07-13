@@ -18,6 +18,8 @@ public class LoadedArchive : ViewModelBase
         set => SetProperty(ref _name, value);
     }
 
+    public string? CustomAssetBaseDirectory { get; set; }
+
     public string FilePath
     {
         get => _filePath;
