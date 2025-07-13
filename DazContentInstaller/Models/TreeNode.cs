@@ -9,25 +9,28 @@ namespace DazContentInstaller.Models;
 public class TreeNode
 {
     public ObservableCollection<TreeNode> Children { get; set; } = [];
-    public string Title { get; set; }
+    public TreeNode? Parent { get; }
+    public string Title { get; }
+    public Guid? DbId { get; }
 
-    public TreeNode(string title)
+    public TreeNode(string title, Guid? id, TreeNode? parent)
     {
         Title = title;
+        Parent = parent;
+        DbId = id;
     }
 
-    public TreeNode(string title, IEnumerable<TreeNode> children)
+    public TreeNode(string title, Guid? dbId, IEnumerable<TreeNode> children, TreeNode? parent) : this(title, dbId, parent)
     {
-        Title = title;
         Children.AddRange(children);
     }
 
-    public TreeNode GetOrAddChild(string name)
+    public TreeNode GetOrAddChild(string name, Guid? dbId)
     {
         var child = Children.FirstOrDefault(c => c.Title.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (child is null)
         {
-            child = new TreeNode(name);
+            child = new TreeNode(name, dbId, this);
             Children.Add(child);
         }
 

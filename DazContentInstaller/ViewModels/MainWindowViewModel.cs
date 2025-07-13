@@ -13,11 +13,11 @@ using ReactiveUI;
 
 namespace DazContentInstaller.ViewModels;
 
-public partial class MainWindowViewModel : ViewModelBase
+public class MainWindowViewModel : ViewModelBase
 {
-    private readonly ApplicationDbContext _dbContext = null!;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory = null!;
     public ObservableCollection<LoadedArchive> LoadedArchives { get; set; } = [];
-    public InstalledArchiveTree InstalledArchivesTree { get; } = [];
+    private InstalledArchiveTree InstalledArchivesTree { get; } = [];
     public ObservableCollection<TreeNode> DisplayedInstalledArchives { get; } = [];
 
     private ObservableCollection<LoadedArchive> _selectedArchives = [];
@@ -26,6 +26,16 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         get => _selectedArchives;
         set => SetProperty(ref _selectedArchives, value);
+    }
+
+    public TreeNode? SelectedInstallNode
+    {
+        get => _selectedInstallNode;
+        set
+        {
+            SetProperty(ref _selectedInstallNode, value);
+            OnPropertyChanged(nameof(UninstallButtonEnabled));
+        }
     }
 
     public ObservableCollection<AssetLibrary> AssetLibraries { get; set; } = [];
@@ -45,7 +55,10 @@ public partial class MainWindowViewModel : ViewModelBase
         set => SetProperty(ref _installButtonEnabled, value);
     }
 
+    public bool UninstallButtonEnabled => SelectedInstallNode is not null && SelectedInstallNode.Parent is null;
+
     private string _statusText = "Ready";
+    private TreeNode? _selectedInstallNode;
 
     public string StatusText
     {
@@ -57,11 +70,13 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         ClearLoadedArchivesCommand = ReactiveCommand.Create(ClearLoadedArchives);
         InstallArchivesCommand = ReactiveCommand.CreateFromTask(InstallArchives);
+        UninstallArchiveCommand = ReactiveCommand.CreateFromTask(UninstallArchiveAsync);
+        RefreshInstalledAssets = ReactiveCommand.CreateFromTask(LoadInstalledArchivesAsync);
     }
 
-    public MainWindowViewModel(ApplicationDbContext dbContext) : this()
+    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory) : this()
     {
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
     }
 
     private void ClearLoadedArchives()
@@ -72,11 +87,14 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     public ReactiveCommand<Unit, Unit> ClearLoadedArchivesCommand { get; set; }
+    public ReactiveCommand<Unit, Unit> RefreshInstalledAssets { get; set; }
     public ReactiveCommand<Unit, Unit> InstallArchivesCommand { get; set; }
+    public ReactiveCommand<Unit, Unit> UninstallArchiveCommand { get; set; }
 
     public async Task LoadAssetLibrariesAsync()
     {
-        var libraries = await _dbContext.AssetLibraries.ToListAsync();
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var libraries = await dbContext.AssetLibraries.ToListAsync();
         AssetLibraries.Clear();
         AssetLibraries.AddRange(libraries);
         CurrentSelectedAssetLibrary = libraries.OrderByDescending(d => d.IsDefault).FirstOrDefault();
@@ -86,7 +104,8 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         InstalledArchivesTree.Clear();
 
-        var archives = await _dbContext.Archives
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var archives = await dbContext.Archives
             .Where(d => d.Status == ArchiveStatus.Installed)
             .Include(d => d.AssetFiles)
             .OrderBy(d => d.ArchiveName)
@@ -106,6 +125,7 @@ public partial class MainWindowViewModel : ViewModelBase
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
 
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
         foreach (var archive in archivesToInstall)
         {
             var dbArchive = new Archive
@@ -113,21 +133,53 @@ public partial class MainWindowViewModel : ViewModelBase
                 ArchiveName = archive.Name,
                 ArchiveSize = archive.FileSizeBytes,
                 Status = archive.Status,
-                AssetLibrary = CurrentSelectedAssetLibrary
+                AssetLibraryId = CurrentSelectedAssetLibrary.Id
             };
 
             dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
-            _dbContext.Archives.Add(dbArchive);
-            await _dbContext.SaveChangesAsync();
+            dbContext.Archives.Add(dbArchive);
+            await dbContext.SaveChangesAsync();
 
             using var installer = new DazArchiveInstaller(archive);
             await installer.InstallAsync(CurrentSelectedAssetLibrary.Path);
 
             dbArchive.Status = ArchiveStatus.Installed;
-            await _dbContext.SaveChangesAsync();
+            await dbContext.SaveChangesAsync();
 
             LoadedArchives.Remove(archive);
         }
+
+        await LoadInstalledArchivesAsync();
+    }
+
+    private async Task UninstallArchiveAsync()
+    {
+        if (SelectedInstallNode is null)
+            return;
+
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        var archive = await dbContext.Archives
+            .Include(a => a.AssetLibrary)
+            .Include(a => a.AssetFiles)
+            .FirstOrDefaultAsync(a => a.Id == SelectedInstallNode.DbId);
+        if (archive is null)
+            return;
+
+        var deleteFileExceptions = await dbContext.AssetFiles
+            .Where(f => f.ArchiveId != archive.Id && f.InstalledPath != null)
+            .ToListAsync();
+
+        deleteFileExceptions = deleteFileExceptions
+            .Where(f => archive.AssetFiles.Any(a =>
+                a.InstalledPath!.Equals(f.InstalledPath, StringComparison.OrdinalIgnoreCase))).Distinct().ToList();
+
+        var uninstaller = new DazArchiveUninstaller(archive);
+        uninstaller.UninstallArchive(deleteFileExceptions.Select(d => d.InstalledPath!).ToHashSet());
+
+        dbContext.Archives.Remove(archive);
+        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
 
         await LoadInstalledArchivesAsync();
     }
@@ -159,18 +211,18 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         var filtered = InstalledArchivesTree
-            .Select(node => FilterTree(node, searchTerm))
+            .Select(node => FilterTree(node, searchTerm, node.Parent))
             .Where(node => node is not null)
             .Select(node => node!);
 
         DisplayedInstalledArchives.AddRange(filtered);
     }
 
-    private static TreeNode? FilterTree(TreeNode node, string searchTerm)
+    private static TreeNode? FilterTree(TreeNode node, string searchTerm, TreeNode? parent)
     {
         // Filter children recursively
         var filteredChildren = node.Children
-            .Select(child => FilterTree(child, searchTerm))
+            .Select(child => FilterTree(child, searchTerm, child.Parent))
             .Where(child => child is not null)
             .Select(child => child!)
             .ToList();
@@ -179,7 +231,7 @@ public partial class MainWindowViewModel : ViewModelBase
         var isMatch = node.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
 
         if (isMatch || filteredChildren.Count > 0)
-            return new TreeNode(node.Title, filteredChildren);
+            return new TreeNode(node.Title, node.DbId, filteredChildren, node.Parent);
 
         return null;
     }
@@ -187,19 +239,5 @@ public partial class MainWindowViewModel : ViewModelBase
     private void UpdateInstallButton()
     {
         InstallButtonEnabled = LoadedArchives.Count > 0 && CurrentSelectedAssetLibrary != null;
-    }
-
-    private static string FormatFileSize(long bytes)
-    {
-        string[] sizes = { "B", "KB", "MB", "GB" };
-        double len = bytes;
-        var order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len /= 1024;
-        }
-
-        return $"{len:0.##} {sizes[order]}";
     }
 }

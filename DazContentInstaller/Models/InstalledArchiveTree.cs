@@ -10,15 +10,15 @@ public class InstalledArchiveTree : ObservableCollection<TreeNode>
 {
     public void LoadArchive(Archive archive)
     {
-        var root = new TreeNode(archive.ArchiveName);
+        var root = new TreeNode(archive.ArchiveName, archive.Id, null);
         Add(root);
 
-        foreach (var path in archive.AssetFiles.Select(d => d.FileName))
+        foreach (var assetFile in archive.AssetFiles)
         {
-            var parts = path.Split(Path.DirectorySeparatorChar);
+            var parts = assetFile.FileName.Split(Path.DirectorySeparatorChar);
             var current = root;
-            foreach (var t in parts)
-                current = current.GetOrAddChild(t);
+            for (var index = 0; index < parts.Length; index++) 
+                current = current.GetOrAddChild(parts[index], index == parts.Length - 1 ? assetFile.Id : null);
         }
 
         SortTree(root);

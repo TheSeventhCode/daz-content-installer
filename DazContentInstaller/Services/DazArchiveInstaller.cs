@@ -11,7 +11,7 @@ public class DazArchiveInstaller : IDisposable
 {
     private readonly LoadedArchive _loadedArchive;
     private readonly DirectoryInfo _tempDirectory;
-    
+
     public DazArchiveInstaller(LoadedArchive loadedArchive)
     {
         _loadedArchive = loadedArchive;
@@ -27,17 +27,25 @@ public class DazArchiveInstaller : IDisposable
             var parentArchivePath = Path.GetDirectoryName(_loadedArchive.FilePath)!;
             await ExtractArchiveAsync(parentArchivePath, _tempDirectory.FullName);
             archivePath = Path.Combine(extractionDestinationPath, Path.GetFileName(_loadedArchive.FilePath));
-            extractionDestinationPath = Path.Combine(extractionDestinationPath, Path.GetFileNameWithoutExtension(_loadedArchive.FilePath));
+            extractionDestinationPath = Path.Combine(extractionDestinationPath,
+                Path.GetFileNameWithoutExtension(_loadedArchive.FilePath));
         }
-        
+
         await ExtractArchiveAsync(archivePath, extractionDestinationPath);
-        
+
         var extractionDirectory = new DirectoryInfo(extractionDestinationPath);
         var contentDirectory = extractionDirectory.GetDirectories()
             .FirstOrDefault(d => d.Name.Equals("content", StringComparison.OrdinalIgnoreCase));
         var archiveBaseDirectory = contentDirectory ?? extractionDirectory;
-        
+
         CopyDirectory(archiveBaseDirectory, new DirectoryInfo(libraryPath));
+
+        foreach (var archive in _loadedArchive.ContainedFiles)
+        {
+            archive.InstalledPath = archive.FileName.StartsWith("content", StringComparison.OrdinalIgnoreCase)
+                ? archive.FileName[8..]
+                : archive.FileName;
+        }
     }
 
     public void Dispose()
@@ -56,10 +64,10 @@ public class DazArchiveInstaller : IDisposable
         var dirs = sourceDir.GetDirectories();
 
         Directory.CreateDirectory(destinationDir.FullName);
-        
+
         foreach (var file in sourceDir.GetFiles())
         {
-            var targetFilePath =  Path.Combine(destinationDir.FullName, file.Name);
+            var targetFilePath = Path.Combine(destinationDir.FullName, file.Name);
             file.CopyTo(targetFilePath, true);
         }
 

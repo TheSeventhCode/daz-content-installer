@@ -20,7 +20,8 @@ public class ApplicationDbContext : DbContext
             .HasMany(x => x.AssetFiles)
             .WithOne(x => x.Archive)
             .HasForeignKey(x => x.ArchiveId)
-            .IsRequired();
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
         
         base.OnModelCreating(modelBuilder);
     }

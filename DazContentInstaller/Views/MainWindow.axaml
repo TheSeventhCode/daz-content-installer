@@ -166,6 +166,7 @@
                                     Grid.Column="1"
                                     Content="🔄"
                                     Padding="5"
+                                    Command="{Binding RefreshInstalledAssets}"
                                     ToolTip.Tip="Refresh installed assets" />
                         </Grid>
 
@@ -176,7 +177,7 @@
 
                     <!-- Installed Assets List -->
                     <TreeView Grid.Row="1"
-                              SelectionMode="Single" ItemsSource="{Binding DisplayedInstalledArchives}">
+                              SelectionMode="Single" ItemsSource="{Binding DisplayedInstalledArchives}" SelectedItem="{Binding SelectedInstallNode}">
                         <TreeView.ItemTemplate>
                             <TreeDataTemplate ItemsSource="{Binding Children}">
                                 <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
@@ -198,7 +199,8 @@
                                 Padding="15,8"
                                 Background="#DC3545"
                                 Foreground="White"
-                                IsEnabled="False" />
+                                Command="{Binding UninstallArchiveCommand}"
+                                IsEnabled="{Binding UninstallButtonEnabled}" />
                     </Grid>
                 </Grid>
             </Border>
