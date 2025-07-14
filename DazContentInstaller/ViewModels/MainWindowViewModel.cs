@@ -111,8 +111,7 @@ public class MainWindowViewModel : ViewModelBase
         RemoveLoadedArchiveClick = ReactiveCommand.Create<LoadedArchive>(RemoveLoadedArchive);
     }
 
-    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory,
-        SettingsService settingsService) : this()
+    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory, SettingsService settingsService) : this()
     {
         _dbContextFactory = dbContextFactory;
         _settingsService = settingsService;
@@ -163,9 +162,9 @@ public class MainWindowViewModel : ViewModelBase
         FilterInstalledAssetsTree(InstalledAssetsSearch);
     }
 
-    private void RemoveLoadedArchive(LoadedArchive loadedArchive)
+    private void RemoveLoadedArchive(LoadedArchive loadedArchiveOld)
     {
-        LoadedArchives.Remove(loadedArchive);
+        LoadedArchives.Remove(loadedArchiveOld);
     }
 
     private async Task InstallArchives()
@@ -175,7 +174,7 @@ public class MainWindowViewModel : ViewModelBase
 
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
-        archivesToInstall.ForEach(d => d.Status = ArchiveStatus.Installing);
+        archivesToInstall.ForEach(d => d.ArchiveStatus = ArchiveStatus.Installing);
 
         var progress = new Progress<string>(s => StatusText = s);
 
@@ -189,57 +188,38 @@ public class MainWindowViewModel : ViewModelBase
 
         var loadedArchivesToSkip = archivesToInstall
             .IntersectBy(existingArchives.Select(d => d.ArchiveName), GetLoadedArchiveName).ToList();
-        loadedArchivesToSkip.ForEach(d => d.Status = ArchiveStatus.Duplicate);
+        loadedArchivesToSkip.ForEach(d => d.ArchiveStatus = ArchiveStatus.Duplicate);
 
-        var groupedArchives = archivesToInstall
-            .Except(loadedArchivesToSkip)
-            .GroupBy(a => Path.GetDirectoryName(a.FilePath));
+        archivesToInstall = archivesToInstall.Except(loadedArchivesToSkip).ToList();
+        using var installer = new DazArchiveInstaller(archivesToInstall, _settingsService.CurrentSettings);
+        await installer.InstallArchivesAsync(CurrentSelectedAssetLibrary.Path, progress);
 
-        foreach (var group in groupedArchives)
+        foreach (var archive in archivesToInstall)
         {
-            var tempDirectory = Directory.CreateTempSubdirectory("DazContentInstaller");
-            using var archivePackage = new SharpSevenZipExtractor(group.Key!);
-            await archivePackage.ExtractArchiveAsync(tempDirectory.FullName);
-
-            foreach (var archive in group)
+            var dbArchive = new Archive
             {
-                var name = GetLoadedArchiveName(archive);
-
-                var dbArchive = new Archive
-                {
-                    ArchiveName = name,
-                    ArchiveSize = archive.FileSizeBytes,
-                    Status = archive.Status,
-                    CustomAssetsBasePath = archive.CustomAssetBaseDirectory,
-                    AssetLibraryId = CurrentSelectedAssetLibrary.Id
-                };
-
-                dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
-                dbContext.Archives.Add(dbArchive);
-                await dbContext.SaveChangesAsync();
-
-                using var installer = new DazArchiveInstaller(archive, _settingsService.CurrentSettings);
-                await installer.InstallAsync(CurrentSelectedAssetLibrary.Path, tempDirectory.FullName,
-                    dbArchive.CustomAssetsBasePath, progress);
-
-                dbArchive.Status = ArchiveStatus.Installed;
-                await dbContext.SaveChangesAsync();
-
-                LoadedArchives.Remove(archive);
-
-                await LoadInstalledArchivesAsync();
-            }
-
-            tempDirectory.Delete(true);
+                ArchiveName = archive.Name,
+                ArchiveSize = archive.FileSizeBytes,
+                Status = ArchiveStatus.Installed,
+                CustomAssetsBasePath = archive.CustomAssetBaseDirectory,
+                AssetLibraryId = CurrentSelectedAssetLibrary.Id
+            };
+            
+            dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
+            dbContext.Archives.Add(dbArchive);
+            await dbContext.SaveChangesAsync();
+            
+            LoadedArchives.Remove(archive);
+            await LoadInstalledArchivesAsync();
         }
-
+        
         ((IProgress<string>)progress).Report($"Installed {archivesToInstall.Count} archives");
     }
 
-    private static string GetLoadedArchiveName(LoadedArchive archive) =>
-        archive.Metadata.TryGetValue("ProductName", out var productName)
+    private static string GetLoadedArchiveName(LoadedArchive archiveOld) =>
+        archiveOld.Metadata.TryGetValue("ProductName", out var productName)
             ? productName.ToString()!
-            : archive.Name;
+            : archiveOld.Name;
 
     private async Task UninstallArchiveAsync()
     {
@@ -284,21 +264,12 @@ public class MainWindowViewModel : ViewModelBase
     {
         var progress = new Progress<string>(s => StatusText = s);
 
-        DirectoryInfo? tempDirectory = null;
-        try
-        {
-            await using var loader = new DazArchiveLoader(filePath);
-            tempDirectory = loader.TempDirectory;
-            var result = await loader.LoadArchiveAsync(progress);
+        using var loader = new DazArchiveLoader(filePath);
+        var result = await loader.LoadArchiveAsync(progress);
 
-            LoadedArchives.Add(result);
-            UpdateInstallButton();
-            ((IProgress<string>)progress).Report($"Finished loading {Path.GetFileName(filePath)}");
-        }
-        catch (IOException)
-        {
-            tempDirectory?.Delete(true);
-        }
+        LoadedArchives.AddRange(result.Where(d => d.ContainedFiles.Count > 0));
+        UpdateInstallButton();
+        ((IProgress<string>)progress).Report($"Finished loading {Path.GetFileName(filePath)}");
     }
 
     private void FilterInstalledAssetsTree(string? searchTerm)

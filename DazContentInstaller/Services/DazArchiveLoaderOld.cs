@@ -12,7 +12,7 @@ using SharpSevenZip.Exceptions;
 
 namespace DazContentInstaller.Services;
 
-public class DazArchiveLoader : IAsyncDisposable
+public class DazArchiveLoaderOld : IAsyncDisposable
 {
     public DirectoryInfo TempDirectory { get; }
     private readonly string _baseArchivePath;
@@ -57,15 +57,15 @@ public class DazArchiveLoader : IAsyncDisposable
     private static readonly string[] MetadataFiles = ["Supplement.dsx", "manifest.json", "ProductInformation.json"];
     private static readonly string[] ArchiveExtensions = ["zip", "rar", "7z"];
 
-    public DazArchiveLoader(string baseArchivePath)
+    public DazArchiveLoaderOld(string baseArchivePath)
     {
         TempDirectory = Directory.CreateTempSubdirectory("DazContentLoader");
         _baseArchivePath = baseArchivePath;
     }
 
-    public async Task<List<LoadedArchive>> LoadArchiveAsync(IProgress<string>? progress = null)
+    public async Task<List<LoadedArchiveOld>> LoadArchiveAsync(IProgress<string>? progress = null)
     {
-        var archives = new List<LoadedArchive>();
+        var archives = new List<LoadedArchiveOld>();
 
         var archiveName = Path.GetFileName(_baseArchivePath);
         progress?.Report($"Reading {archiveName}...");
@@ -87,7 +87,7 @@ public class DazArchiveLoader : IAsyncDisposable
                 archives.AddRange(await DigSubArchivesAsync(progress));
             else
             {
-                var archive = new LoadedArchive
+                var archive = new LoadedArchiveOld
                 {
                     FilePath = _baseArchivePath,
                     Name = Path.GetFileNameWithoutExtension(_baseArchivePath),
@@ -139,16 +139,16 @@ public class DazArchiveLoader : IAsyncDisposable
             TempDirectory.Delete(true);
     }
 
-    private async Task<List<LoadedArchive>> DigSubArchivesAsync(IProgress<string>? progress)
+    private async Task<List<LoadedArchiveOld>> DigSubArchivesAsync(IProgress<string>? progress)
     {
-        var archives = new List<LoadedArchive>();
+        var archives = new List<LoadedArchiveOld>();
 
         foreach (var subarchive in TempDirectory.EnumerateFiles("*", SearchOption.AllDirectories)
                      .Where(fi => ArchiveExtensions.Any(e => Path.GetExtension(fi.Name).EndsWith(e))))
         {
             progress?.Report($"Reading sub-archive {subarchive.Name}...");
 
-            var archive = new LoadedArchive
+            var archive = new LoadedArchiveOld
             {
                 FilePath = Path.Combine(_baseArchivePath, subarchive.Name),
                 Name = Path.Combine(Path.GetFileNameWithoutExtension(_baseArchivePath), subarchive.Name),
@@ -179,20 +179,20 @@ public class DazArchiveLoader : IAsyncDisposable
                                    StringComparison.OrdinalIgnoreCase)));
     }
 
-    private async Task HandleArchiveAsync(LoadedArchive archive, SharpSevenZipExtractor archiveFile,
+    private async Task HandleArchiveAsync(LoadedArchiveOld archiveOld, SharpSevenZipExtractor archiveFile,
         IProgress<string>? progress)
     {
         var fileInfo = new FileInfo(archiveFile.FileName!);
-        archive.FileSizeBytes = fileInfo.Length;
+        archiveOld.FileSizeBytes = fileInfo.Length;
 
-        archive.CustomAssetBaseDirectory = DigArchiveBaseDirectory(archiveFile.ArchiveFileNames);
+        archiveOld.CustomAssetBaseDirectory = DigArchiveBaseDirectory(archiveFile.ArchiveFileNames);
 
-        AnalyzeZipContents(archive, archiveFile, progress);
+        AnalyzeZipContents(archiveOld, archiveFile, progress);
 
-        progress?.Report($"Extracting {archive.Name} metadata...");
-        await ExtractMetadataAsync(archive, archiveFile, progress);
+        progress?.Report($"Extracting {archiveOld.Name} metadata...");
+        await ExtractMetadataAsync(archiveOld, archiveFile, progress);
 
-        archive.Status = ArchiveStatus.Ready;
+        archiveOld.Status = ArchiveStatus.Ready;
     }
 
     private static string? DigArchiveBaseDirectory(IEnumerable<string> fileNames, string? starter = null)
@@ -214,7 +214,7 @@ public class DazArchiveLoader : IAsyncDisposable
         }
     }
 
-    private void AnalyzeZipContents(LoadedArchive archive, SharpSevenZipExtractor archiveFile,
+    private void AnalyzeZipContents(LoadedArchiveOld archiveOld, SharpSevenZipExtractor archiveFile,
         IProgress<string>? progress)
     {
         var categories = new HashSet<string>();
@@ -224,7 +224,7 @@ public class DazArchiveLoader : IAsyncDisposable
         foreach (var fileInfo in archiveFile.ArchiveFileData.Where(i => !i.IsDirectory))
         {
             fileCount++;
-            archive.ContainedFiles.Add(new AssetFile
+            archiveOld.ContainedFiles.Add(new AssetFile
             {
                 FileName = fileInfo.FileName,
                 FileSize = fileInfo.Size
@@ -244,22 +244,22 @@ public class DazArchiveLoader : IAsyncDisposable
 
             var extension = Path.GetExtension(fileInfo.FileName);
             if (_dazFileExtensions.Contains(extension))
-                archive.Metadata[$"Has{extension.TrimStart('.').ToUpper()}Files"] = true;
+                archiveOld.Metadata[$"Has{extension.TrimStart('.').ToUpper()}Files"] = true;
 
             if (fileCount % 100 == 0)
                 progress?.Report($"Analyzed {fileCount} files...");
         }
 
         foreach (var category in categories)
-            archive.Categories.Add(category);
-        archive.AssetType = DetermineAssetType(archive.AssetType is AssetType.Unknown
+            archiveOld.Categories.Add(category);
+        archiveOld.AssetType = DetermineAssetType(archiveOld.AssetType is AssetType.Unknown
             ? assetTypes
-            : ( [..assetTypes, archive.AssetType]));
+            : ( [..assetTypes, archiveOld.AssetType]));
 
-        if (archive.Metadata.TryGetValue("FileCount", out var existingCount))
-            archive.Metadata["FileCount"] = (int)existingCount + fileCount;
+        if (archiveOld.Metadata.TryGetValue("FileCount", out var existingCount))
+            archiveOld.Metadata["FileCount"] = (int)existingCount + fileCount;
         else
-            archive.Metadata["FileCount"] = fileCount;
+            archiveOld.Metadata["FileCount"] = fileCount;
     }
 
     private static AssetType DetermineAssetType(HashSet<AssetType> detectedTypes)
@@ -272,7 +272,7 @@ public class DazArchiveLoader : IAsyncDisposable
         };
     }
 
-    private static async Task ExtractMetadataAsync(LoadedArchive archive, SharpSevenZipExtractor archiveFile,
+    private static async Task ExtractMetadataAsync(LoadedArchiveOld archiveOld, SharpSevenZipExtractor archiveFile,
         IProgress<string>? progress)
     {
         foreach (var metadataFile in MetadataFiles)
@@ -284,14 +284,14 @@ public class DazArchiveLoader : IAsyncDisposable
 
             progress?.Report($"Reading {metadataFile}...");
             var content = await ReadTextFromEntryAsync(archiveFile, archiveFileInfo);
-            archive.Metadata[archiveFileInfo.FileName] = content;
+            archiveOld.Metadata[archiveFileInfo.FileName] = content;
 
             if (metadataFile.EndsWith("Supplement.dsx"))
-                archive.Metadata["ProductName"] = GetProductName(archive, content);
+                archiveOld.Metadata["ProductName"] = GetProductName(archiveOld, content);
         }
 
         // Analyze folder structure for better naming
-        ImproveAssetNaming(archive);
+        ImproveAssetNaming(archiveOld);
     }
 
     private static async Task<string> ReadTextFromEntryAsync(SharpSevenZipExtractor archive,
@@ -305,7 +305,7 @@ public class DazArchiveLoader : IAsyncDisposable
         return await reader.ReadToEndAsync();
     }
 
-    private static string GetProductName(LoadedArchive archive, string xmlContent)
+    private static string GetProductName(LoadedArchiveOld archiveOld, string xmlContent)
     {
         try
         {
@@ -314,16 +314,16 @@ public class DazArchiveLoader : IAsyncDisposable
         }
         catch (Exception ex)
         {
-            archive.Status = ArchiveStatus.Error;
-            archive.Metadata["Error"] = ex.Message;
+            archiveOld.Status = ArchiveStatus.Error;
+            archiveOld.Metadata["Error"] = ex.Message;
             return string.Empty;
         }
     }
 
-    private static void ImproveAssetNaming(LoadedArchive archive)
+    private static void ImproveAssetNaming(LoadedArchiveOld archiveOld)
     {
         // Try to improve asset naming based on folder structure
-        var topLevelFolders = archive.ContainedFiles
+        var topLevelFolders = archiveOld.ContainedFiles
             .Where(f => !f.FileName.StartsWith("__MACOSX")) // Ignore Mac metadata
             .Select(f => f.FileName.Split('/')[0])
             .Where(f => !string.IsNullOrEmpty(f))
@@ -335,21 +335,21 @@ public class DazArchiveLoader : IAsyncDisposable
         {
             // If there's a consistent top-level folder that's not "Content", use it
             var folderName = topLevelFolders.Key;
-            if (folderName.Length > 3 && !folderName.Equals(archive.Name, StringComparison.OrdinalIgnoreCase))
+            if (folderName.Length > 3 && !folderName.Equals(archiveOld.Name, StringComparison.OrdinalIgnoreCase))
             {
-                archive.Metadata["SuggestedName"] = folderName;
+                archiveOld.Metadata["SuggestedName"] = folderName;
             }
         }
 
         // Look for product name in folder structure
-        var productFolders = archive.ContainedFiles
+        var productFolders = archiveOld.ContainedFiles
             .Where(f => f.FileName.Contains("Product", StringComparison.OrdinalIgnoreCase))
             .Select(f => Path.GetDirectoryName(f.FileName))
             .FirstOrDefault(d => !string.IsNullOrEmpty(d));
 
         if (!string.IsNullOrEmpty(productFolders))
         {
-            archive.Metadata["ProductFolder"] = productFolders;
+            archiveOld.Metadata["ProductFolder"] = productFolders;
         }
     }
 }

@@ -121,11 +121,11 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <Border
-                                                    Background="{Binding DataType=models:LoadedArchive,Path=Status, Converter={StaticResource StatusToColorConverter}}"
+                                                    Background="{Binding DataType=models:LoadedArchive,Path=ArchiveStatus, Converter={StaticResource StatusToColorConverter}}"
                                                     CornerRadius="8" Padding="4,2"
                                                     Margin="0,0,4,0" MaxHeight="20" MaxWidth="100">
                                                     <TextBlock
-                                                        Text="{Binding DataType=models:LoadedArchive,Path=Status}"
+                                                        Text="{Binding DataType=models:LoadedArchive,Path=ArchiveStatus}"
                                                         Foreground="White"
                                                         VerticalAlignment="Center"
                                                         HorizontalAlignment="Center"

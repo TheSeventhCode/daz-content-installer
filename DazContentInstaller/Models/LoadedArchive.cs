@@ -7,25 +7,27 @@ namespace DazContentInstaller.Models;
 
 public class LoadedArchive : ViewModelBase
 {
-    private string _name = string.Empty;
-    private string _filePath = string.Empty;
-    private ArchiveStatus _status;
+    private string _name;
+    private string _filePath;
+    private ArchiveStatus _archiveStatus;
     private long _fileSizeBytes;
 
-    public bool IsPartOfParentArchive { get; set; }
     public string Name
     {
         get => _name;
         set => SetProperty(ref _name, value);
     }
 
-    public string? CustomAssetBaseDirectory { get; set; }
-    public string? CustomSubArchiveDirectory { get; set; }
-
     public string FilePath
     {
         get => _filePath;
         set => SetProperty(ref _filePath, value);
+    }
+
+    public ArchiveStatus ArchiveStatus
+    {
+        get => _archiveStatus;
+        set => SetProperty(ref _archiveStatus, value);
     }
 
     public long FileSizeBytes
@@ -35,15 +37,21 @@ public class LoadedArchive : ViewModelBase
     }
 
     public string FileSize => FileSizeFormatter.FormatFileSize(FileSizeBytes);
-
-    public ArchiveStatus Status
-    {
-        get => _status;
-        set => SetProperty(ref _status, value);
-    }
-
-    public AssetType AssetType { get; set; } = AssetType.Unknown;
+    public AssetType AssetType { get; set; }
     public HashSet<string> Categories { get; set; } = [];
     public List<AssetFile> ContainedFiles { get; set; } = [];
     public Dictionary<string, object> Metadata { get; set; } = new();
+
+    public LoadedArchive? ParentArchive { get; }
+
+    public string? CustomAssetBaseDirectory { get; }
+
+    public LoadedArchive(string name, string filePath, long fileSize, LoadedArchive? parentArchive = null, string? customAssetBaseDirectory = null)
+    {
+        _name = name;
+        _filePath = filePath;
+        _fileSizeBytes = fileSize;
+        CustomAssetBaseDirectory = customAssetBaseDirectory;
+        ParentArchive = parentArchive;
+    }
 }

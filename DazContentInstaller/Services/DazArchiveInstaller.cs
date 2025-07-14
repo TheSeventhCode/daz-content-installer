@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,52 +10,51 @@ namespace DazContentInstaller.Services;
 
 public class DazArchiveInstaller : IDisposable
 {
-    private readonly LoadedArchive _loadedArchive;
-    private readonly DirectoryInfo _tempDirectory;
+    private readonly DirectoryInfo _workingDirectory;
+    private readonly IEnumerable<LoadedArchive> _loadedArchivesToInstall;
     private readonly AppSettings _settings;
 
-    public DazArchiveInstaller(LoadedArchive loadedArchive, AppSettings settings)
+    public DazArchiveInstaller(IEnumerable<LoadedArchive> archivesToInstall, AppSettings settings)
     {
-        _loadedArchive = loadedArchive;
+        _workingDirectory = Directory.CreateTempSubdirectory("DazInstaller");
+        _loadedArchivesToInstall = archivesToInstall;
         _settings = settings;
-        _tempDirectory = Directory.CreateTempSubdirectory("DazContentInstaller");
     }
 
-    public async Task InstallAsync(string libraryPath, string existingPackageString, string? customBasePath = null,
-        IProgress<string>? progress = null)
+    public void Dispose()
     {
-        progress?.Report($"Installing {_loadedArchive.Name}...");
+        _workingDirectory.Delete(true);
+    }
 
-        var archivePath = Path.Combine(existingPackageString, _loadedArchive.CustomSubArchiveDirectory ?? string.Empty, Path.GetFileName(_loadedArchive.FilePath));
-        var extractionDestinationPath =
-            Path.Combine(existingPackageString, _loadedArchive.CustomSubArchiveDirectory ?? string.Empty, Path.GetFileNameWithoutExtension(_loadedArchive.FilePath));
-
-        await ExtractArchiveAsync(archivePath, extractionDestinationPath);
-
-        var extractionDirectory = new DirectoryInfo(string.IsNullOrEmpty(customBasePath)
-            ? extractionDestinationPath
-            : Path.Combine(extractionDestinationPath, customBasePath));
-        var contentDirectory = extractionDirectory.GetDirectories()
-            .FirstOrDefault(d => d.Name.Equals("content", StringComparison.OrdinalIgnoreCase));
-        var archiveBaseDirectory = contentDirectory ?? extractionDirectory;
-
-        CopyDirectory(archiveBaseDirectory, new DirectoryInfo(libraryPath));
-
-        foreach (var archive in _loadedArchive.ContainedFiles)
+    public async Task InstallArchivesAsync(string libraryPath, IProgress<string>? progress = null)
+    {
+        foreach (var loadedArchive in _loadedArchivesToInstall)
         {
-            archive.InstalledPath = !string.IsNullOrEmpty(customBasePath)
-                ? archive.FileName.Split(customBasePath + Path.DirectorySeparatorChar).Last()
-                : archive.FileName;
+            progress?.Report($"Installing {loadedArchive.Name}...");
+
+            var extractedArchiveLocation = await FullExtractAsync(loadedArchive, _workingDirectory.FullName);
+            var extractionDirectory = new DirectoryInfo(string.IsNullOrEmpty(loadedArchive.CustomAssetBaseDirectory)
+                ? extractedArchiveLocation
+                : Path.Combine(extractedArchiveLocation, loadedArchive.CustomAssetBaseDirectory));
+
+            CopyDirectory(extractionDirectory, new DirectoryInfo(libraryPath));
+
+            foreach (var file in loadedArchive.ContainedFiles)
+            {
+                file.InstalledPath = !string.IsNullOrEmpty(loadedArchive.CustomAssetBaseDirectory)
+                    ? file.FileName.Split(loadedArchive.CustomAssetBaseDirectory + Path.DirectorySeparatorChar).Last()
+                    : file.FileName;
             
-            archive.InstalledPath = archive.InstalledPath.StartsWith("content", StringComparison.OrdinalIgnoreCase)
-                ? archive.InstalledPath[8..]
-                : archive.InstalledPath;
-        }
+                file.InstalledPath = file.InstalledPath.StartsWith("content", StringComparison.OrdinalIgnoreCase)
+                    ? file.InstalledPath[8..]
+                    : file.InstalledPath;
+            }
 
-        if (_settings.CreateBackupBeforeInstall)
-        {
+            if (!_settings.CreateBackupBeforeInstall) continue;
+            
             var archiveBackupPath = Path.Combine(libraryPath, "ArchiveBackup");
             Directory.CreateDirectory(archiveBackupPath);
+            var archivePath = extractedArchiveLocation + Path.GetExtension(loadedArchive.FilePath);
             
             archiveBackupPath = Path.Combine(archiveBackupPath, Path.GetFileName(archivePath));
             
@@ -62,15 +62,20 @@ public class DazArchiveInstaller : IDisposable
         }
     }
 
-    public void Dispose()
+    private static async Task<string> FullExtractAsync(LoadedArchive loadedArchive, string currentDirectory)
     {
-        _tempDirectory.Delete(true);
-    }
+        var archivePath = loadedArchive.FilePath;
+        if (loadedArchive.ParentArchive is not null)
+        {
+            var extractedDirectory = await FullExtractAsync(loadedArchive.ParentArchive, currentDirectory);
+            archivePath = Path.Combine(extractedDirectory, loadedArchive.FilePath);
+            currentDirectory = Path.Combine(extractedDirectory,
+                loadedArchive.FilePath.Split(Path.GetExtension(loadedArchive.FilePath))[0]);
+        }
 
-    private static async Task ExtractArchiveAsync(string archivePath, string destination)
-    {
         using var archive = new SharpSevenZipExtractor(archivePath);
-        await archive.ExtractArchiveAsync(destination);
+        await archive.ExtractArchiveAsync(currentDirectory);
+        return currentDirectory;
     }
 
     private static void CopyDirectory(DirectoryInfo sourceDir, DirectoryInfo destinationDir)
