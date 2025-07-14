@@ -197,6 +197,7 @@ public class MainWindowViewModel : ViewModelBase
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
 
+        StatusProgress = 0;
         IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
         StatusBarColor = Brushes.DodgerBlue;
         IProgress<double> percentageProgress = new Progress<double>(s => StatusProgress = (int)s);
@@ -275,6 +276,7 @@ public class MainWindowViewModel : ViewModelBase
         IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
         IProgress<double> percentageProgress = new Progress<double>(s => StatusProgress = (int)s);
         StatusBarColor = Brushes.DodgerBlue;
+        StatusProgress = 0;
         var increment = Math.Ceiling(100D / archives.Count);
 
         var index = 0;
@@ -301,6 +303,7 @@ public class MainWindowViewModel : ViewModelBase
     public async Task LoadArchiveFilesAsync(List<string> filePaths)
     {
         StatusBarMax = 100 * filePaths.Count;
+        StatusProgress = 0;
         StatusBarColor = Brushes.DodgerBlue;
 
         var index = 0;
