@@ -8,7 +8,7 @@ namespace DazContentInstaller.Models;
 
 public class InstalledArchiveTree : ObservableCollection<TreeNode>
 {
-    public void LoadArchive(Archive archive)
+    public TreeNode LoadArchive(Archive archive)
     {
         var root = new TreeNode(archive.ArchiveName, archive.Id, null);
         Add(root);
@@ -22,6 +22,7 @@ public class InstalledArchiveTree : ObservableCollection<TreeNode>
         }
 
         SortTree(root);
+        return root;
     }
 
     private static void SortTree(TreeNode node)

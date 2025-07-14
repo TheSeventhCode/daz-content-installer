@@ -104,7 +104,6 @@ public partial class MainWindow : Window
                 return;
 
             await ViewModel.LoadAssetLibrariesAsync();
-            await ViewModel.LoadInstalledArchivesAsync();
         }
         catch (Exception ex)
         {
