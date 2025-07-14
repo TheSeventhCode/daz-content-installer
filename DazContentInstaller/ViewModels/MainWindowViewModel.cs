@@ -108,6 +108,7 @@ public class MainWindowViewModel : ViewModelBase
         InstallArchivesCommand = ReactiveCommand.CreateFromTask(InstallArchives);
         UninstallArchiveCommand = ReactiveCommand.CreateFromTask(UninstallArchiveAsync);
         RefreshInstalledAssets = ReactiveCommand.CreateFromTask(LoadInstalledArchivesAsync);
+        RemoveLoadedArchiveClick = ReactiveCommand.Create<LoadedArchive>(RemoveLoadedArchive);
     }
 
     public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory,
@@ -128,6 +129,7 @@ public class MainWindowViewModel : ViewModelBase
     public ReactiveCommand<Unit, Unit> RefreshInstalledAssets { get; set; }
     public ReactiveCommand<Unit, Unit> InstallArchivesCommand { get; set; }
     public ReactiveCommand<Unit, Unit> UninstallArchiveCommand { get; set; }
+    public ReactiveCommand<LoadedArchive, Unit> RemoveLoadedArchiveClick { get; set; }
 
     public async Task LoadAssetLibrariesAsync()
     {
@@ -159,6 +161,11 @@ public class MainWindowViewModel : ViewModelBase
             InstalledArchivesTree.LoadArchive(archive);
 
         FilterInstalledAssetsTree(InstalledAssetsSearch);
+    }
+
+    private void RemoveLoadedArchive(LoadedArchive loadedArchive)
+    {
+        LoadedArchives.Remove(loadedArchive);
     }
 
     private async Task InstallArchives()

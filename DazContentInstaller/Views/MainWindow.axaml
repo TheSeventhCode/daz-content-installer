@@ -13,6 +13,7 @@
 
     <Window.Resources>
         <converters:CategoryToColorConverter x:Key="CategoryToColorConverter" />
+        <converters:CategoryToFontColorConverter x:Key="CategoryToFontColorConverter" />
         <converters:StatusToColorConverter x:Key="StatusToColorConverter" />
     </Window.Resources>
 
@@ -101,7 +102,7 @@
                                                                 Margin="0,0,4,0">
                                                                 <TextBlock
                                                                     Text="{Binding }"
-                                                                    Foreground="White"
+                                                                    Foreground="{Binding Converter={StaticResource CategoryToFontColorConverter}}"
                                                                     VerticalAlignment="Center"
                                                                     HorizontalAlignment="Center"
                                                                     FontStyle="Italic"
@@ -131,6 +132,21 @@
                                                         FontStyle="Italic"
                                                         FontSize="12" />
                                                 </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Width="50">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Content="×"
+                                                        Foreground="Red"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Padding="5,2"
+                                                        Command="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).RemoveLoadedArchiveClick}"
+                                                        CommandParameter="{Binding}"
+                                                        Tag="{Binding}"
+                                                        ToolTip.Tip="Remove Archive" />
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>

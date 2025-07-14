@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
-using Avalonia.Rendering;
 using DazContentInstaller.Database;
 using DazContentInstaller.Models;
 using SharpSevenZip;
@@ -35,6 +33,7 @@ public class DazArchiveLoader : IAsyncDisposable
         { "animations", AssetType.Poses },
         { "materials", AssetType.Materials },
         { "shaders", AssetType.Materials },
+        { "morphs", AssetType.Morphs },
         { "lights", AssetType.Lights },
         { "cameras", AssetType.Cameras },
         { "scripts", AssetType.Scripts },

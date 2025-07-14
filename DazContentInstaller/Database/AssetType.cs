@@ -15,5 +15,6 @@ public enum AssetType
     Cameras,
     Scripts,
     Textures,
+    Morphs,
     Mixed
 }
