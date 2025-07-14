@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -27,7 +28,8 @@ public class DazArchiveInstaller : IDisposable
         _workingDirectory.Delete(true);
     }
 
-    public async IAsyncEnumerable<LoadedArchive> InstallArchivesAsync(string libraryPath, IProgress<string>? progress = null)
+    public async IAsyncEnumerable<LoadedArchive> InstallArchivesAsync(string libraryPath,
+        IProgress<string>? progress = null)
     {
         foreach (var loadedArchive in _loadedArchivesToInstall)
         {
@@ -46,20 +48,22 @@ public class DazArchiveInstaller : IDisposable
                 file.InstalledPath = !string.IsNullOrEmpty(loadedArchive.CustomAssetBaseDirectory)
                     ? file.FileName.Split(loadedArchive.CustomAssetBaseDirectory + Path.DirectorySeparatorChar).Last()
                     : file.FileName;
-            
+
                 file.InstalledPath = file.InstalledPath.StartsWith("content", StringComparison.OrdinalIgnoreCase)
                     ? file.InstalledPath[8..]
                     : file.InstalledPath;
             }
 
             if (!_settings.CreateBackupBeforeInstall) continue;
-            
+
             var archiveBackupPath = Path.Combine(libraryPath, "ArchiveBackup");
             Directory.CreateDirectory(archiveBackupPath);
-            var archivePath = extractedArchiveLocation + Path.GetExtension(loadedArchive.FilePath);
-            
+            var archivePath = extractedArchiveLocation == _workingDirectory.FullName
+                ? loadedArchive.FilePath
+                : extractedArchiveLocation + Path.GetExtension(loadedArchive.FilePath);
+
             archiveBackupPath = Path.Combine(archiveBackupPath, Path.GetFileName(archivePath));
-            
+
             File.Copy(archivePath, archiveBackupPath, true);
 
             loadedArchive.ArchiveStatus = ArchiveStatus.Installed;
