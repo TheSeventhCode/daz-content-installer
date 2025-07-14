@@ -117,8 +117,6 @@ jobs:
         ### Downloads
         - **Windows x64**: ${{ env.ARTIFACT_NAME }}-$tag-win-x64.zip
         - **Windows x86**: ${{ env.ARTIFACT_NAME }}-$tag-win-x86.zip
-        
-        **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...$tag
         EOF
         
         echo "notes_file=./release_notes.md" >> $GITHUB_OUTPUT
