@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using DazContentInstaller.Database;
 using DazContentInstaller.Models;
 using SharpSevenZip;
 
@@ -26,11 +27,12 @@ public class DazArchiveInstaller : IDisposable
         _workingDirectory.Delete(true);
     }
 
-    public async Task InstallArchivesAsync(string libraryPath, IProgress<string>? progress = null)
+    public async IAsyncEnumerable<LoadedArchive> InstallArchivesAsync(string libraryPath, IProgress<string>? progress = null)
     {
         foreach (var loadedArchive in _loadedArchivesToInstall)
         {
             progress?.Report($"Installing {loadedArchive.Name}...");
+            loadedArchive.ArchiveStatus = ArchiveStatus.Installing;
 
             var extractedArchiveLocation = await FullExtractAsync(loadedArchive, _workingDirectory.FullName);
             var extractionDirectory = new DirectoryInfo(string.IsNullOrEmpty(loadedArchive.CustomAssetBaseDirectory)
@@ -59,6 +61,9 @@ public class DazArchiveInstaller : IDisposable
             archiveBackupPath = Path.Combine(archiveBackupPath, Path.GetFileName(archivePath));
             
             File.Copy(archivePath, archiveBackupPath, true);
+
+            loadedArchive.ArchiveStatus = ArchiveStatus.Installed;
+            yield return loadedArchive;
         }
     }
 

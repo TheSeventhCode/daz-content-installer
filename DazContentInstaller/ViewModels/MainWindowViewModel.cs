@@ -174,7 +174,6 @@ public class MainWindowViewModel : ViewModelBase
 
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
-        archivesToInstall.ForEach(d => d.ArchiveStatus = ArchiveStatus.Installing);
 
         var progress = new Progress<string>(s => StatusText = s);
 
@@ -192,9 +191,8 @@ public class MainWindowViewModel : ViewModelBase
 
         archivesToInstall = archivesToInstall.Except(loadedArchivesToSkip).ToList();
         using var installer = new DazArchiveInstaller(archivesToInstall, _settingsService.CurrentSettings);
-        await installer.InstallArchivesAsync(CurrentSelectedAssetLibrary.Path, progress);
 
-        foreach (var archive in archivesToInstall)
+        await foreach (var archive in installer.InstallArchivesAsync(CurrentSelectedAssetLibrary.Path, progress))
         {
             var dbArchive = new Archive
             {
@@ -212,7 +210,7 @@ public class MainWindowViewModel : ViewModelBase
             LoadedArchives.Remove(archive);
             await LoadInstalledArchivesAsync();
         }
-        
+
         ((IProgress<string>)progress).Report($"Installed {archivesToInstall.Count} archives");
     }
 
