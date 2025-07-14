@@ -13,7 +13,6 @@ using DazContentInstaller.Services;
 using DynamicData;
 using Microsoft.EntityFrameworkCore;
 using ReactiveUI;
-using SharpSevenZip;
 
 namespace DazContentInstaller.ViewModels;
 
@@ -86,7 +85,7 @@ public class MainWindowViewModel : ViewModelBase
     private string _installedAssetsSearch = string.Empty;
     private int _statusProgress;
     private int _statusBarMax = 100;
-    private IImmutableSolidColorBrush _statusBarColor;
+    private IImmutableSolidColorBrush _statusBarColor = Brushes.DodgerBlue;
 
     public string StatusText
     {

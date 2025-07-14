@@ -8,6 +8,15 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
+  <!-- Single-file publish configuration -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <DebugType>None</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
