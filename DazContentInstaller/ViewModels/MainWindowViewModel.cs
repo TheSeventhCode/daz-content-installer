@@ -207,7 +207,11 @@ public class MainWindowViewModel : ViewModelBase
         var archivesToInstallNames = archivesToInstall.Select(GetLoadedArchiveName).ToArray();
         var existingArchives = await dbContext.Archives
             .Where(a => archivesToInstallNames.Contains(a.ArchiveName))
+            .Include(a => a.AssetFiles)
             .ToListAsync();
+
+        existingArchives = existingArchives.Where(e => archivesToInstall.Any(a =>
+            a.ContainedFiles.Count == e.AssetFiles.Count && GetLoadedArchiveName(a).Equals(e.ArchiveName))).ToList();
 
         var loadedArchivesToSkip = archivesToInstall
             .IntersectBy(existingArchives.Select(d => d.ArchiveName), GetLoadedArchiveName).ToList();
@@ -288,7 +292,7 @@ public class MainWindowViewModel : ViewModelBase
 
             dbContext.Archives.Remove(archive);
             await dbContext.SaveChangesAsync();
-            
+
             messageProgress.Report($"Uninstalled {archive.ArchiveName}");
             percentageProgress.Report(index * increment);
             await Task.Yield();

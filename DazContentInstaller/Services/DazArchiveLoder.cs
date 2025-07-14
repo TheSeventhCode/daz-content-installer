@@ -55,19 +55,22 @@ public class DazArchiveLoader : IDisposable
 
     private readonly string _archivePath;
     private readonly DirectoryInfo _workingPath;
+    private readonly string _baseTemporaryWorkingDirectory;
     private readonly LoadedArchive? _parentArchive;
 
     public DazArchiveLoader(string archivePath)
     {
         _archivePath = archivePath;
         _workingPath = Directory.CreateTempSubdirectory("DazLoader-" + Path.GetFileNameWithoutExtension(archivePath));
+        _baseTemporaryWorkingDirectory = _workingPath.FullName;
     }
 
-    public DazArchiveLoader(string archivePath, string workingPathOverride, LoadedArchive parentArchive)
+    private DazArchiveLoader(string archivePath, string workingPathOverride, LoadedArchive parentArchive, string baseTemporaryWorkingDirectory)
     {
         _archivePath = archivePath;
         _workingPath = new DirectoryInfo(workingPathOverride);
         _parentArchive = parentArchive;
+        _baseTemporaryWorkingDirectory = baseTemporaryWorkingDirectory;
     }
 
     public async Task<IEnumerable<LoadedArchive>> LoadArchiveAsync(IProgress<string>? messageProgress = null,
@@ -121,7 +124,7 @@ public class DazArchiveLoader : IDisposable
             Directory.CreateDirectory(subArchiveWorkingDirectory);
 
             using var subArchiveLoader =
-                new DazArchiveLoader(subArchiveFile.FullName, subArchiveWorkingDirectory, loadedArchive);
+                new DazArchiveLoader(subArchiveFile.FullName, subArchiveWorkingDirectory, loadedArchive, _baseTemporaryWorkingDirectory);
             archives.AddRange(await subArchiveLoader.LoadArchiveAsync(messageProgress));
             progress += (int)increment;
             percentProgress?.Report(progress);
@@ -137,15 +140,18 @@ public class DazArchiveLoader : IDisposable
         _workingPath.Delete(true);
     }
 
-    private static string GetSubArchivePath(string archivePath, LoadedArchive parentArchive)
+    private string GetSubArchivePath(string archivePath, LoadedArchive parentArchive)
     {
-        var fullPath = GetFullParentArchivePath(parentArchive);
+        var cut = archivePath[_baseTemporaryWorkingDirectory.Length..].TrimStart(Path.DirectorySeparatorChar);
+        if (parentArchive.ParentArchive is null)
+            return cut;
 
-        var splitter = archivePath.Split(Path.DirectorySeparatorChar)
-            .First(p => p.Contains(Path.GetFileNameWithoutExtension(parentArchive.FilePath)));
+        var parentName = Path.GetFileNameWithoutExtension(parentArchive.FilePath);
+        var parentIndex = cut.IndexOf(parentName, StringComparison.OrdinalIgnoreCase);
+        if(parentIndex > -1)
+            cut = cut.Substring(parentIndex + parentName.Length).TrimStart(Path.DirectorySeparatorChar);
 
-        var index = archivePath.IndexOf(splitter, StringComparison.Ordinal) + splitter.Length;
-        return archivePath[index..].Trim(Path.DirectorySeparatorChar);
+        return cut;
     }
 
     private static string GetFullParentArchivePath(LoadedArchive parentArchive)
