@@ -49,8 +49,7 @@ public partial class MainWindow : Window
 
             if (zipFiles == null) return;
 
-            foreach (var file in zipFiles)
-                await ViewModel.LoadArchiveFileAsync(file.Path.LocalPath);
+            await ViewModel.LoadArchiveFilesAsync(zipFiles.Select(f => f.Path.LocalPath).ToList());
         }
         catch (Exception ex)
         {
@@ -89,8 +88,7 @@ public partial class MainWindow : Window
 
             if (files.Count < 1) return;
 
-            foreach (var file in files)
-                await ViewModel.LoadArchiveFileAsync(file.Path.LocalPath);
+            await ViewModel.LoadArchiveFilesAsync(files.Select(f => f.Path.LocalPath).ToList());
         }
         catch (Exception ex)
         {

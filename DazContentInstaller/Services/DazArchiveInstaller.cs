@@ -29,11 +29,13 @@ public class DazArchiveInstaller : IDisposable
     }
 
     public async IAsyncEnumerable<LoadedArchive> InstallArchivesAsync(string libraryPath,
-        IProgress<string>? progress = null)
+        IProgress<string>? messageProgress = null, IProgress<double>? percentProgress = null)
     {
+        var index = 0;
+        var increment = Math.Ceiling(100D / _loadedArchivesToInstall.Count());
         foreach (var loadedArchive in _loadedArchivesToInstall)
         {
-            progress?.Report($"Installing {loadedArchive.Name}...");
+            index++;
             loadedArchive.ArchiveStatus = ArchiveStatus.Installing;
 
             var extractedArchiveLocation = await FullExtractAsync(loadedArchive, _workingDirectory.FullName);
@@ -42,7 +44,9 @@ public class DazArchiveInstaller : IDisposable
                 : Path.Combine(extractedArchiveLocation, loadedArchive.CustomAssetBaseDirectory));
 
             CopyDirectory(extractionDirectory, new DirectoryInfo(libraryPath));
-
+            messageProgress?.Report($"Extracted {loadedArchive.Name}...");
+            percentProgress?.Report(index * increment + increment / 3);
+            
             foreach (var file in loadedArchive.ContainedFiles)
             {
                 file.InstalledPath = !string.IsNullOrEmpty(loadedArchive.CustomAssetBaseDirectory)
@@ -54,18 +58,23 @@ public class DazArchiveInstaller : IDisposable
                     : file.InstalledPath;
             }
 
-            if (!_settings.CreateBackupBeforeInstall) continue;
+            messageProgress?.Report($"Installed {loadedArchive.Name}...");
+            percentProgress?.Report(index * increment + 2 * increment / 3);
+            
+            if (_settings.CreateBackupBeforeInstall)
+            {
+                var archiveBackupPath = Path.Combine(libraryPath, "ArchiveBackup");
+                Directory.CreateDirectory(archiveBackupPath);
+                var archivePath = extractedArchiveLocation == _workingDirectory.FullName
+                    ? loadedArchive.FilePath
+                    : extractedArchiveLocation + Path.GetExtension(loadedArchive.FilePath);
 
-            var archiveBackupPath = Path.Combine(libraryPath, "ArchiveBackup");
-            Directory.CreateDirectory(archiveBackupPath);
-            var archivePath = extractedArchiveLocation == _workingDirectory.FullName
-                ? loadedArchive.FilePath
-                : extractedArchiveLocation + Path.GetExtension(loadedArchive.FilePath);
+                archiveBackupPath = Path.Combine(archiveBackupPath, Path.GetFileName(archivePath));
 
-            archiveBackupPath = Path.Combine(archiveBackupPath, Path.GetFileName(archivePath));
-
-            File.Copy(archivePath, archiveBackupPath, true);
-
+                File.Copy(archivePath, archiveBackupPath, true);
+            }
+            
+            percentProgress?.Report(index * increment + increment);
             loadedArchive.ArchiveStatus = ArchiveStatus.Installed;
             yield return loadedArchive;
         }

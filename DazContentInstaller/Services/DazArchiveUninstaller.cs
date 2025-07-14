@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using DazContentInstaller.Database;
 
 namespace DazContentInstaller.Services;
@@ -17,7 +18,7 @@ public class DazArchiveUninstaller
         _libraryPath = new DirectoryInfo(_archive.AssetLibrary.Path);
     }
 
-    public void UninstallArchive(HashSet<string> deleteFileExceptions)
+    public async Task UninstallArchiveAsync(HashSet<string> deleteFileExceptions)
     {
         foreach (var file in _archive.AssetFiles)
         {
@@ -36,6 +37,8 @@ public class DazArchiveUninstaller
             }
 
             DeleteEmptyDirectory(fileInfo.Directory!);
+
+            await Task.Yield();
         }
     }
 

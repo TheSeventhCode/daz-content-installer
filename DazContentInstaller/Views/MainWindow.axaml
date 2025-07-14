@@ -45,7 +45,8 @@
                         <TextBlock Text="Asset Library:"
                                    VerticalAlignment="Center" Margin="0,0,10,0" />
                         <ComboBox ItemsSource="{Binding AssetLibraries}"
-                                  Grid.Column="1" HorizontalAlignment="Stretch" SelectedItem="{Binding CurrentSelectedAssetLibrary}"
+                                  Grid.Column="1" HorizontalAlignment="Stretch"
+                                  SelectedItem="{Binding CurrentSelectedAssetLibrary}"
                                   SelectionChanged="AssetLibrary_OnSelectionChanged">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
@@ -54,7 +55,7 @@
                             </ComboBox.ItemTemplate>
                         </ComboBox>
                     </Grid>
-                    
+
                     <!-- Drop Zone -->
                     <Border Grid.Row="1" Name="DropZone" Background="#F8F8F8" BorderBrush="#CCCCCC" BorderThickness="2"
                             CornerRadius="8" Height="120" Margin="0,0,0,15" DragDrop.AllowDrop="True">
@@ -68,7 +69,7 @@
                             </StackPanel>
                         </DockPanel>
                     </Border>
-                    
+
                     <!-- Loaded Assets List -->
                     <Border Grid.Row="2" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="3">
                         <Grid RowDefinitions="Auto,*">
@@ -106,7 +107,7 @@
                                                                     VerticalAlignment="Center"
                                                                     HorizontalAlignment="Center"
                                                                     FontStyle="Italic"
-                                                                    FontSize="12" Margin="5 0"/>
+                                                                    FontSize="12" Margin="5 0" />
                                                             </Border>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
@@ -210,7 +211,8 @@
                     <!-- Installed Assets List -->
                     <TreeView Grid.Row="1"
                               SelectionMode="Multiple" ItemsSource="{Binding DisplayedInstalledArchives}"
-                              SelectedItems="{Binding SelectedInstallNodes}" SelectionChanged="InstalledArchivesTreeView_OnSelectionChanged">
+                              SelectedItems="{Binding SelectedInstallNodes}"
+                              SelectionChanged="InstalledArchivesTreeView_OnSelectionChanged">
                         <TreeView.ItemTemplate>
                             <TreeDataTemplate ItemsSource="{Binding Children}">
                                 <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
@@ -245,16 +247,20 @@
                 BorderBrush="#E0E0E0"
                 BorderThickness="0,1,0,0"
                 Padding="10,5">
-            <Grid ColumnDefinitions="*,Auto">
-                <TextBlock
-                    Grid.Column="0"
-                    Text="{Binding StatusText, UpdateSourceTrigger=PropertyChanged}"
-                    VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1"
-                           Text="{Binding InstalledAssetsCountText}"
-                           VerticalAlignment="Center"
-                           Foreground="#666666" />
-            </Grid>
+            <StackPanel>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,5">
+                    <TextBlock
+                        Grid.Column="0"
+                        Text="{Binding StatusText, UpdateSourceTrigger=PropertyChanged}"
+                        VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding InstalledAssetsCountText}"
+                               VerticalAlignment="Center"
+                               Foreground="#666666" />
+                </Grid>
+                <ProgressBar Height="20" Minimum="0" Foreground="{Binding StatusBarColor}"
+                             Maximum="{Binding StatusBarMax}" Value="{Binding StatusProgress}" />
+            </StackPanel>
         </Border>
     </Grid>
 

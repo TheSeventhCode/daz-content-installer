@@ -69,20 +69,18 @@ public class DazArchiveLoader : IDisposable
         _parentArchive = parentArchive;
     }
 
-    public async Task<IEnumerable<LoadedArchive>> LoadArchiveAsync(IProgress<string>? progress = null)
+    public async Task<IEnumerable<LoadedArchive>> LoadArchiveAsync(IProgress<string>? messageProgress = null, IProgress<int>? percentProgress = null)
     {
         var archives = new List<LoadedArchive>();
 
         var archiveName = Path.GetFileName(_archivePath);
-        progress?.Report("Reading archive: " + archiveName);
 
         using var archive = new SharpSevenZipExtractor(_archivePath);
         if (!archive.Check())
             throw new ExtractionFailedException("Archie file could not be read or is corrupted.");
 
         await archive.ExtractArchiveAsync(_workingPath.FullName);
-
-        progress?.Report($"Analyzing {archiveName} contents...");
+        messageProgress?.Report("Extracted archive: " + archiveName);
 
         var filePath = _parentArchive is not null
             ? GetSubArchivePath(_archivePath, _parentArchive)
@@ -94,17 +92,19 @@ public class DazArchiveLoader : IDisposable
         if (!archive.ArchiveFileData.Where(d => !d.IsDirectory)
                 .All(d => PackagedArchiveFileExtensions.Contains(Path.GetExtension(d.FileName))))
         {
-            progress?.Report($"Reading {archiveName} contents...");
-
             if (IsTemplateArchive(archive))
                 return archives;
 
-            await HandleArchiveAsync(loadedArchive, archive, progress);
+            await HandleArchiveAsync(loadedArchive, archive, messageProgress, percentProgress);
+            messageProgress?.Report($"Analyzed {archive.FileName}");
         }
-
+        
         var subArchives = archive.ArchiveFileData
-            .Where(d => ArchiveFileExtensions.Contains(Path.GetExtension(d.FileName)));
+            .Where(d => ArchiveFileExtensions.Contains(Path.GetExtension(d.FileName)))
+            .ToList();
 
+        var increment = Math.Ceiling(100D / subArchives.Count);
+        var progress = 0;
         foreach (var subArchive in subArchives)
         {
             var subArchiveFile = new FileInfo(Path.Combine(_workingPath.FullName, subArchive.FileName));
@@ -115,8 +115,12 @@ public class DazArchiveLoader : IDisposable
 
             using var subArchiveLoader =
                 new DazArchiveLoader(subArchiveFile.FullName, subArchiveWorkingDirectory, loadedArchive);
-            archives.AddRange(await subArchiveLoader.LoadArchiveAsync(progress));
+            archives.AddRange(await subArchiveLoader.LoadArchiveAsync(messageProgress));
+            progress += (int)increment;
+            percentProgress?.Report(progress);
         }
+        
+        percentProgress?.Report(100);
 
         return [..archives, loadedArchive];
     }
@@ -255,18 +259,18 @@ public class DazArchiveLoader : IDisposable
     }
 
     private async Task HandleArchiveAsync(LoadedArchive loadedArchive, SharpSevenZipExtractor archiveFile,
-        IProgress<string>? progress)
+        IProgress<string>? messageProgress, IProgress<int>? percentProgress)
     {
-        AnalyzeZipContents(loadedArchive, archiveFile, progress);
+        AnalyzeZipContents(loadedArchive, archiveFile, messageProgress, percentProgress);
 
-        progress?.Report($"Extracting {loadedArchive.Name} metadata...");
-        await ExtractMetadataAsync(loadedArchive, archiveFile, progress);
+        await ExtractMetadataAsync(loadedArchive, archiveFile, messageProgress);
+        messageProgress?.Report($"Extracted {loadedArchive.Name} metadata...");
 
         loadedArchive.ArchiveStatus = ArchiveStatus.Ready;
     }
 
     private void AnalyzeZipContents(LoadedArchive loadedArchive, SharpSevenZipExtractor archiveFile,
-        IProgress<string>? progress)
+        IProgress<string>? messageProgress,  IProgress<int>? percentProgress)
     {
         var categories = new HashSet<string>();
         var assetTypes = new HashSet<AssetType>();
@@ -299,7 +303,7 @@ public class DazArchiveLoader : IDisposable
                 loadedArchive.Metadata[$"Has{extension.TrimStart('.').ToUpper()}Files"] = true;
 
             if (fileCount % 100 == 0)
-                progress?.Report($"Analyzed {fileCount} files...");
+                messageProgress?.Report($"Analyzed {fileCount} files...");
         }
 
         foreach (var category in categories)

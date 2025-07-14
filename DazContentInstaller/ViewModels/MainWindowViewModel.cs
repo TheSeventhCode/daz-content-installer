@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reactive;
 using System.Threading.Tasks;
+using Avalonia.Media;
 using DazContentInstaller.Database;
 using DazContentInstaller.Extensions;
 using DazContentInstaller.Models;
@@ -83,11 +84,32 @@ public class MainWindowViewModel : ViewModelBase
     private string _statusText = "Ready";
     private int _installedAssetsCount;
     private string _installedAssetsSearch = string.Empty;
+    private int _statusProgress;
+    private int _statusBarMax = 100;
+    private IImmutableSolidColorBrush _statusBarColor;
 
     public string StatusText
     {
         get => _statusText;
         set => SetProperty(ref _statusText, value);
+    }
+
+    public int StatusProgress
+    {
+        get => _statusProgress;
+        set => SetProperty(ref _statusProgress, value);
+    }
+
+    public IImmutableSolidColorBrush StatusBarColor
+    {
+        get => _statusBarColor;
+        set => SetProperty(ref _statusBarColor, value);
+    }
+
+    public int StatusBarMax
+    {
+        get => _statusBarMax;
+        set => SetProperty(ref _statusBarMax, value);
     }
 
     private int InstalledAssetsCount
@@ -111,7 +133,8 @@ public class MainWindowViewModel : ViewModelBase
         RemoveLoadedArchiveClick = ReactiveCommand.Create<LoadedArchive>(RemoveLoadedArchive);
     }
 
-    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory, SettingsService settingsService) : this()
+    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        SettingsService settingsService) : this()
     {
         _dbContextFactory = dbContextFactory;
         _settingsService = settingsService;
@@ -175,9 +198,10 @@ public class MainWindowViewModel : ViewModelBase
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
 
-        var progress = new Progress<string>(s => StatusText = s);
+        IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
+        StatusBarColor = Brushes.DodgerBlue;
+        IProgress<double> percentageProgress = new Progress<double>(s => StatusProgress = (int)s);
 
-        ((IProgress<string>)progress).Report($"Start install of {archivesToInstall.Count} archives");
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
         var archivesToInstallNames = archivesToInstall.Select(GetLoadedArchiveName).ToArray();
@@ -192,7 +216,8 @@ public class MainWindowViewModel : ViewModelBase
         archivesToInstall = archivesToInstall.Except(loadedArchivesToSkip).ToList();
         using var installer = new DazArchiveInstaller(archivesToInstall, _settingsService.CurrentSettings);
 
-        await foreach (var archive in installer.InstallArchivesAsync(CurrentSelectedAssetLibrary.Path, progress))
+        await foreach (var archive in installer.InstallArchivesAsync(CurrentSelectedAssetLibrary.Path, messageProgress,
+                           percentageProgress))
         {
             var dbArchive = new Archive
             {
@@ -202,16 +227,18 @@ public class MainWindowViewModel : ViewModelBase
                 CustomAssetsBasePath = archive.CustomAssetBaseDirectory,
                 AssetLibraryId = CurrentSelectedAssetLibrary.Id
             };
-            
+
             dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
             dbContext.Archives.Add(dbArchive);
             await dbContext.SaveChangesAsync();
-            
+
             LoadedArchives.Remove(archive);
             await LoadInstalledArchivesAsync();
         }
 
-        ((IProgress<string>)progress).Report($"Installed {archivesToInstall.Count} archives");
+        messageProgress.Report($"Installed {archivesToInstall.Count} archives");
+        percentageProgress.Report(100);
+        StatusBarColor = Brushes.Green;
     }
 
     private static string GetLoadedArchiveName(LoadedArchive archiveOld) =>
@@ -246,28 +273,55 @@ public class MainWindowViewModel : ViewModelBase
                 .Any(f => f.InstalledPath!.Equals(e.InstalledPath, StringComparison.OrdinalIgnoreCase)))
             .Distinct().ToList();
 
+        IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
+        IProgress<double> percentageProgress = new Progress<double>(s => StatusProgress = (int)s);
+        StatusBarColor = Brushes.DodgerBlue;
+        var increment = Math.Ceiling(100D / archives.Count);
+
+        var index = 0;
         foreach (var archive in archives)
         {
+            index++;
             var uninstaller = new DazArchiveUninstaller(archive);
-            uninstaller.UninstallArchive(deleteFileExceptions.Select(d => d.InstalledPath!).ToHashSet());
+            await uninstaller.UninstallArchiveAsync(deleteFileExceptions.Select(d => d.InstalledPath!).ToHashSet());
 
             dbContext.Archives.Remove(archive);
             await dbContext.SaveChangesAsync();
+            
+            messageProgress.Report($"Uninstalled {archive.ArchiveName}");
+            percentageProgress.Report(index * increment);
+            await Task.Yield();
         }
 
         await LoadInstalledArchivesAsync();
+        messageProgress.Report($"Uninstalled {archives.Count} archives");
+        percentageProgress.Report(100);
+        StatusBarColor = Brushes.Green;
     }
 
-    public async Task LoadArchiveFileAsync(string filePath)
+    public async Task LoadArchiveFilesAsync(List<string> filePaths)
     {
-        var progress = new Progress<string>(s => StatusText = s);
+        StatusBarMax = 100 * filePaths.Count;
+        StatusBarColor = Brushes.DodgerBlue;
 
-        using var loader = new DazArchiveLoader(filePath);
-        var result = await loader.LoadArchiveAsync(progress);
+        var index = 0;
+        foreach (var path in filePaths)
+        {
+            index++;
+            var existingStatusProgress = index * 100;
+            IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
+            var percentageProgress = new Progress<int>(p => StatusProgress = existingStatusProgress + p);
 
-        LoadedArchives.AddRange(result.Where(d => d.ContainedFiles.Count > 0));
-        UpdateInstallButton();
-        ((IProgress<string>)progress).Report($"Finished loading {Path.GetFileName(filePath)}");
+            using var loader = new DazArchiveLoader(path);
+            var result = await loader.LoadArchiveAsync(messageProgress, percentageProgress);
+
+            LoadedArchives.AddRange(result.Where(d => d.ContainedFiles.Count > 0));
+            UpdateInstallButton();
+            messageProgress.Report($"Finished loading {Path.GetFileName(path)}");
+        }
+
+        StatusBarMax = 100;
+        StatusBarColor = Brushes.Green;
     }
 
     private void FilterInstalledAssetsTree(string? searchTerm)
