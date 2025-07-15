@@ -216,7 +216,8 @@ public class MainWindowViewModel : ViewModelBase
 
             var archivesToInstallNames = archivesToInstall.Select(GetLoadedArchiveName).ToArray();
             var existingArchives = await dbContext.Archives
-                .Where(a => archivesToInstallNames.Contains(a.ArchiveName))
+                .Where(a => a.AssetLibraryId == CurrentSelectedAssetLibrary.Id &&
+                            archivesToInstallNames.Contains(a.ArchiveName))
                 .Include(a => a.AssetFiles)
                 .ToListAsync();
 
