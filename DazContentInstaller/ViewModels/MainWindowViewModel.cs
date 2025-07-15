@@ -79,6 +79,12 @@ public class MainWindowViewModel : ViewModelBase
         }
     }
 
+    public bool AllowArchiveLoad
+    {
+        get => _allowArchiveLoad;
+        set => SetProperty(ref _allowArchiveLoad, value);
+    }
+
     public bool UninstallButtonEnabled => SelectedInstallNodes.Any() && SelectedInstallNodes.All(d => d.Parent is null);
 
     private string _statusText = "Ready";
@@ -87,6 +93,7 @@ public class MainWindowViewModel : ViewModelBase
     private int _statusProgress;
     private int _statusBarMax = 100;
     private IImmutableSolidColorBrush _statusBarColor = Brushes.DodgerBlue;
+    private bool _allowArchiveLoad;
 
     public string StatusText
     {
@@ -202,6 +209,7 @@ public class MainWindowViewModel : ViewModelBase
         if (CurrentSelectedAssetLibrary is null)
             return;
 
+        AllowArchiveLoad = false;
         var archivesToInstall =
             SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
 
@@ -252,10 +260,15 @@ public class MainWindowViewModel : ViewModelBase
             }
         });
 
-        await LoadInstalledArchivesAsync();
+        await Task.Run(async () =>
+        {
+            await LoadInstalledArchivesAsync();
+        });
+        
         messageProgress.Report($"Installed {archivesToInstall.Count} archives");
         percentageProgress.Report(100);
         StatusBarColor = Brushes.Green;
+        AllowArchiveLoad = true;
     }
 
     private static string GetLoadedArchiveName(LoadedArchive archiveOld) =>
@@ -268,6 +281,7 @@ public class MainWindowViewModel : ViewModelBase
         if (!SelectedInstallNodes.Any())
             return;
 
+        AllowArchiveLoad = false;
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
         var selectedInstallArchiveIds = SelectedInstallNodes.Select(n => n.DbId).ToArray();
@@ -322,7 +336,12 @@ public class MainWindowViewModel : ViewModelBase
             StatusBarColor = Brushes.Green;
         });
 
-        await LoadInstalledArchivesAsync();
+        await Task.Run(async () =>
+        {
+            await LoadInstalledArchivesAsync();
+        });
+        
+        AllowArchiveLoad = true;
     }
 
     public async Task LoadArchiveFilesAsync(List<string> filePaths)
@@ -330,6 +349,7 @@ public class MainWindowViewModel : ViewModelBase
         StatusBarMax = 100 * filePaths.Count;
         StatusProgress = 0;
         StatusBarColor = Brushes.DodgerBlue;
+        AllowArchiveLoad = false;
 
         var index = 0;
 
@@ -356,6 +376,7 @@ public class MainWindowViewModel : ViewModelBase
 
         StatusBarMax = 100;
         StatusBarColor = Brushes.Green;
+        AllowArchiveLoad = true;
     }
 
     private void FilterInstalledAssetsTree(string? searchTerm)
