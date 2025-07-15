@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -15,6 +16,7 @@ using MsBox.Avalonia;
 using MsBox.Avalonia.Dto;
 using MsBox.Avalonia.Enums;
 using MsBox.Avalonia.Models;
+using SharpSevenZip;
 
 namespace DazContentInstaller.Views;
 
@@ -100,6 +102,10 @@ public partial class MainWindow : Window
     {
         try
         {
+            var currentLocation = System.AppContext.BaseDirectory;
+            SharpSevenZipBase.SetLibraryPath(Path.Combine(currentLocation, Environment.Is64BitProcess ? "x64" : "x86",
+                "7z.dll"));
+
             if (Application.Current?.ApplicationLifetime is null)
                 return;
 
