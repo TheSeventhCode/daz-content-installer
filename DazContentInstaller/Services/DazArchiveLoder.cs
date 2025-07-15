@@ -101,7 +101,7 @@ public class DazArchiveLoader : IDisposable
             archive.UnpackedSize, _parentArchive, DigArchiveBaseDirectory(archive.ArchiveFileNames));
 
         if (!archive.ArchiveFileData.Where(d => !d.IsDirectory)
-                .All(d => PackagedArchiveFileExtensions.Contains(Path.GetExtension(d.FileName))) &&
+                .All(d => PackagedArchiveFileExtensions.Contains(Path.GetExtension(d.FileName).ToLower())) &&
             !IsTemplateArchive(archive))
         {
             await HandleArchiveAsync(loadedArchive, archive, messageProgress, percentProgress);
@@ -109,7 +109,7 @@ public class DazArchiveLoader : IDisposable
         }
 
         var subArchives = archive.ArchiveFileData
-            .Where(d => ArchiveFileExtensions.Contains(Path.GetExtension(d.FileName)))
+            .Where(d => ArchiveFileExtensions.Contains(Path.GetExtension(d.FileName).ToLower()))
             .ToList();
 
         var increment = Math.Ceiling(100D / subArchives.Count);
@@ -329,7 +329,7 @@ public class DazArchiveLoader : IDisposable
             }
 
             var extension = Path.GetExtension(fileInfo.FileName);
-            if (_dazFileExtensions.Contains(extension))
+            if (_dazFileExtensions.Contains(extension.ToLower()))
                 loadedArchive.Metadata[$"Has{extension.TrimStart('.').ToUpper()}Files"] = true;
 
             if (fileCount % 100 == 0)
