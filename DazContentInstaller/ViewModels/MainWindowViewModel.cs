@@ -170,6 +170,7 @@ public class MainWindowViewModel : ViewModelBase
         });
 
         CurrentSelectedAssetLibrary = AssetLibraries.OrderByDescending(d => d.IsDefault).FirstOrDefault();
+        AllowArchiveLoad = true;
     }
 
     public async Task LoadInstalledArchivesAsync()
@@ -187,14 +188,79 @@ public class MainWindowViewModel : ViewModelBase
 
             await foreach (var archive in archivesQuery.OrderBy(d => d.ArchiveName.ToLower()).AsAsyncEnumerable())
             {
-                var files = await _dbContext.AssetFiles.Where(d => d.ArchiveId == archive.Id).ToListAsync();
-                archive.AssetFiles = files;
-
-                var node = InstalledArchivesTree.LoadArchive(archive);
+                var node = InstalledArchivesTree.LoadArchiveLazy(archive);
                 DisplayedInstalledArchives.Add(node);
-                InstalledAssetsCount = InstalledArchivesTree.Count;
+
+                InstalledAssetsCount++;
             }
         });
+    }
+
+    public async Task LoadArchiveTreeFilesAsync(TreeNode archiveNode)
+    {
+        if (!archiveNode.IsLazyLoad || archiveNode.HasLoadedChildren || archiveNode.DbId == null)
+            return;
+
+        try
+        {
+            StatusText = $"Loading files for {archiveNode.Title}...";
+            StatusBarColor = Brushes.DodgerBlue;
+
+            await Task.Run(async () =>
+            {
+                var archive = await _dbContext.Archives
+                    .Include(a => a.AssetFiles)
+                    .FirstOrDefaultAsync(a => a.Id == archiveNode.DbId);
+
+                if (archive != null)
+                {
+                    Dispatcher.UIThread.Post(() => { InstalledArchiveTree.LoadArchiveFiles(archiveNode, archive); });
+                }
+            });
+
+            StatusText = "Ready";
+            StatusBarColor = Brushes.Green;
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Error loading files: {ex.Message}";
+            StatusBarColor = Brushes.Red;
+        }
+    }
+
+    public async Task LoadArchiveFilesFromDiskAsync(List<string> filePaths)
+    {
+        StatusBarMax = 100 * filePaths.Count;
+        StatusProgress = 0;
+        StatusBarColor = Brushes.DodgerBlue;
+        AllowArchiveLoad = false;
+
+        var index = 0;
+
+        await Task.Run(async () =>
+        {
+            foreach (var path in filePaths)
+            {
+                index++;
+                var existingStatusProgress = index * 100;
+                IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
+                var percentageProgress = new Progress<int>(p => StatusProgress = existingStatusProgress + p);
+
+                using var loader = new DazArchiveLoader(path);
+                var result = await loader.LoadArchiveAsync(messageProgress, percentageProgress);
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    LoadedArchives.AddRange(result.Where(d => d.ContainedFiles.Count > 0));
+                    UpdateInstallButton();
+                });
+                messageProgress.Report($"Finished loading {Path.GetFileName(path)}");
+            }
+        });
+
+        StatusBarMax = 100;
+        StatusBarColor = Brushes.Green;
+        AllowArchiveLoad = true;
     }
 
     private void RemoveLoadedArchive(LoadedArchive loadedArchiveOld)
@@ -256,11 +322,8 @@ public class MainWindowViewModel : ViewModelBase
             }
         });
 
-        await Task.Run(async () =>
-        {
-            await LoadInstalledArchivesAsync();
-        });
-        
+        await Task.Run(async () => { await LoadInstalledArchivesAsync(); });
+
         messageProgress.Report($"Installed {archivesToInstall.Count} archives");
         percentageProgress.Report(100);
         StatusBarColor = Brushes.Green;
@@ -331,46 +394,8 @@ public class MainWindowViewModel : ViewModelBase
             StatusBarColor = Brushes.Green;
         });
 
-        await Task.Run(async () =>
-        {
-            await LoadInstalledArchivesAsync();
-        });
-        
-        AllowArchiveLoad = true;
-    }
+        await Task.Run(async () => { await LoadInstalledArchivesAsync(); });
 
-    public async Task LoadArchiveFilesAsync(List<string> filePaths)
-    {
-        StatusBarMax = 100 * filePaths.Count;
-        StatusProgress = 0;
-        StatusBarColor = Brushes.DodgerBlue;
-        AllowArchiveLoad = false;
-
-        var index = 0;
-
-        await Task.Run(async () =>
-        {
-            foreach (var path in filePaths)
-            {
-                index++;
-                var existingStatusProgress = index * 100;
-                IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
-                var percentageProgress = new Progress<int>(p => StatusProgress = existingStatusProgress + p);
-
-                using var loader = new DazArchiveLoader(path);
-                var result = await loader.LoadArchiveAsync(messageProgress, percentageProgress);
-
-                Dispatcher.UIThread.Post(() =>
-                {
-                    LoadedArchives.AddRange(result.Where(d => d.ContainedFiles.Count > 0));
-                    UpdateInstallButton();
-                });
-                messageProgress.Report($"Finished loading {Path.GetFileName(path)}");
-            }
-        });
-
-        StatusBarMax = 100;
-        StatusBarColor = Brushes.Green;
         AllowArchiveLoad = true;
     }
 
@@ -380,12 +405,13 @@ public class MainWindowViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(searchTerm))
         {
             DisplayedInstalledArchives.AddRange(InstalledArchivesTree);
-
             return;
         }
 
         var filtered = InstalledArchivesTree
-            .Select(node => FilterTree(node, searchTerm))
+            .Where(node => node.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+            .Select(node =>
+                node is { IsLazyLoad: true, HasLoadedChildren: false } ? node : FilterTree(node, searchTerm))
             .Where(node => node is not null)
             .Select(node => node!);
 
@@ -394,14 +420,12 @@ public class MainWindowViewModel : ViewModelBase
 
     private static TreeNode? FilterTree(TreeNode node, string searchTerm)
     {
-        // Filter children recursively
         var filteredChildren = node.Children
             .Select(child => FilterTree(child, searchTerm))
             .Where(child => child is not null)
             .Select(child => child!)
             .ToList();
 
-        // Check if this node matches or has any matching children
         var isMatch = node.Title.Contains(searchTerm, StringComparison.OrdinalIgnoreCase);
 
         if (isMatch || filteredChildren.Count > 0)

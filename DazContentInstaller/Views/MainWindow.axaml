@@ -208,7 +208,7 @@
                     </StackPanel>
 
                     <!-- Installed Assets List -->
-                    <TreeView Grid.Row="1"
+                    <TreeView Grid.Row="1" Name="InstalledArchivesTreeView"
                               SelectionMode="Multiple" ItemsSource="{Binding DisplayedInstalledArchives}"
                               SelectedItems="{Binding SelectedInstallNodes}"
                               SelectionChanged="InstalledArchivesTreeView_OnSelectionChanged">

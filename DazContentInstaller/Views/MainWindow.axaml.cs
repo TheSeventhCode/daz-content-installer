@@ -51,7 +51,7 @@ public partial class MainWindow : Window
 
             if (zipFiles == null) return;
 
-            await ViewModel.LoadArchiveFilesAsync(zipFiles.Select(f => f.Path.LocalPath).ToList());
+            await ViewModel.LoadArchiveFilesFromDiskAsync([.. zipFiles.Select(f => f.Path.LocalPath)]);
         }
         catch (Exception ex)
         {
@@ -83,14 +83,14 @@ public partial class MainWindow : Window
                 FileTypeFilter =
                 [
                     new FilePickerFileType("ZIP Archives")
-                        { Patterns = _allowedExtensions.Select(ae => $"*{ae}").ToArray() },
+                        { Patterns = [.. _allowedExtensions.Select(ae => $"*{ae}")] },
                     new FilePickerFileType("All Files") { Patterns = ["*"] }
                 ]
             });
 
             if (files.Count < 1) return;
 
-            await ViewModel.LoadArchiveFilesAsync(files.Select(f => f.Path.LocalPath).ToList());
+            await ViewModel.LoadArchiveFilesFromDiskAsync([.. files.Select(f => f.Path.LocalPath)]);
         }
         catch (Exception ex)
         {
@@ -108,6 +108,8 @@ public partial class MainWindow : Window
 
             if (Application.Current?.ApplicationLifetime is null)
                 return;
+
+            SetupTreeViewExpansionHandler();
 
             await ViewModel.LoadAssetLibrariesAsync();
         }
@@ -185,6 +187,26 @@ public partial class MainWindow : Window
             if (DataContext is not MainWindowViewModel vm || sender is not TreeView tree) return;
 
             await vm.UpdateInstalledAssetDetailsAsync(e.AddedItems.Cast<TreeNode>().FirstOrDefault());
+        }
+        catch (Exception ex)
+        {
+            await ShowErrorMessageBox(ex);
+        }
+    }
+
+    private void SetupTreeViewExpansionHandler() =>
+        AddHandler(TreeViewItem.ExpandedEvent, OnTreeViewItemExpanded, RoutingStrategies.Bubble);
+
+    private async void OnTreeViewItemExpanded(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (DataContext is not MainWindowViewModel vm || e.Source is not TreeViewItem item) return;
+
+            if (item.DataContext is TreeNode { IsLazyLoad: true, HasLoadedChildren: false } treeNode)
+            {
+                await vm.LoadArchiveTreeFilesAsync(treeNode);
+            }
         }
         catch (Exception ex)
         {
