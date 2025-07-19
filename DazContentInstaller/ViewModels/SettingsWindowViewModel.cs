@@ -17,7 +17,7 @@ public class SettingsWindowViewModel : ViewModelBase
     public ObservableCollection<AssetLibraryModel> AssetLibraries { get; set; } = [];
 
     private readonly SettingsService _settingsService = null!;
-    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory = null!;
+    private readonly ApplicationDbContext _dbContext = null!;
     private bool _autoDetectDazLibraries = true;
     private bool _createBackupBeforeInstall = true;
 
@@ -42,10 +42,10 @@ public class SettingsWindowViewModel : ViewModelBase
     }
     
     public SettingsWindowViewModel(SettingsService settingsService,
-        IDbContextFactory<ApplicationDbContext> dbContextFactory) : this()
+        ApplicationDbContext dbContext) : this()
     {
         _settingsService = settingsService;
-        _dbContextFactory = dbContextFactory;
+        _dbContext = dbContext;
     }
 
     public SettingsWindowViewModel()
@@ -89,8 +89,7 @@ public class SettingsWindowViewModel : ViewModelBase
 
         await _settingsService.SaveSettingsAsync();
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        var dbLibraries = await dbContext.AssetLibraries.ToListAsync();
+        var dbLibraries = await _dbContext.AssetLibraries.ToListAsync();
         var newLibraries = AssetLibraries.Where(l => dbLibraries.All(dl => dl.Id != l.Id)).ToList();
 
         foreach (var assetLibraryModel in newLibraries)
@@ -103,11 +102,11 @@ public class SettingsWindowViewModel : ViewModelBase
                 IsDefault = assetLibraryModel.IsDefault,
                 CreatedDate = assetLibraryModel.CreatedDate
             };
-            dbContext.AssetLibraries.Add(library);
+            _dbContext.AssetLibraries.Add(library);
         }
 
         var removedLibraries = dbLibraries.Where(l => AssetLibraries.All(al => al.Id != l.Id)).ToList();
-        foreach (var library in removedLibraries) dbContext.AssetLibraries.Remove(library);
+        foreach (var library in removedLibraries) _dbContext.AssetLibraries.Remove(library);
 
         var updatedLibraries = AssetLibraries.Where(l => dbLibraries.Any(dl => dl.Id == l.Id)).ToList();
         foreach (var library in updatedLibraries)
@@ -118,7 +117,7 @@ public class SettingsWindowViewModel : ViewModelBase
             dbLibrary.IsDefault = library.IsDefault;
         }
 
-        await dbContext.SaveChangesAsync();
+        await _dbContext.SaveChangesAsync();
     }
 
     public void AddLibrary(IStorageFolder folder)
@@ -132,8 +131,7 @@ public class SettingsWindowViewModel : ViewModelBase
     {
         AssetLibraries.Clear();
 
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        var libraries = await dbContext.AssetLibraries
+        var libraries = await _dbContext.AssetLibraries
             .OrderByDescending(l => l.CreatedDate)
             .Select(l => new AssetLibraryModel(l.Id, l.Name, l.Path, l.IsDefault, l.CreatedDate))
             .ToListAsync();

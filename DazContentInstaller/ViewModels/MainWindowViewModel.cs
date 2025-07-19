@@ -19,7 +19,7 @@ namespace DazContentInstaller.ViewModels;
 
 public class MainWindowViewModel : ViewModelBase
 {
-    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory = null!;
+    private readonly ApplicationDbContext _dbContext = null!;
     private readonly SettingsService _settingsService = null!;
     public ObservableCollection<LoadedArchive> LoadedArchives { get; set; } = [];
     private InstalledArchiveTree InstalledArchivesTree { get; } = [];
@@ -140,10 +140,10 @@ public class MainWindowViewModel : ViewModelBase
         RemoveLoadedArchiveClick = ReactiveCommand.Create<LoadedArchive>(RemoveLoadedArchive);
     }
 
-    public MainWindowViewModel(IDbContextFactory<ApplicationDbContext> dbContextFactory,
+    public MainWindowViewModel(ApplicationDbContext dbContext,
         SettingsService settingsService) : this()
     {
-        _dbContextFactory = dbContextFactory;
+        _dbContext = dbContext;
         _settingsService = settingsService;
     }
 
@@ -162,11 +162,10 @@ public class MainWindowViewModel : ViewModelBase
 
     public async Task LoadAssetLibrariesAsync()
     {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
         AssetLibraries.Clear();
         await Task.Run(async () =>
         {
-            await foreach (var library in dbContext.AssetLibraries.AsAsyncEnumerable())
+            await foreach (var library in _dbContext.AssetLibraries.AsAsyncEnumerable())
                 AssetLibraries.Add(library);
         });
 
@@ -181,15 +180,14 @@ public class MainWindowViewModel : ViewModelBase
 
         await Task.Run(async () =>
         {
-            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-            var archivesQuery = dbContext.Archives
+            var archivesQuery = _dbContext.Archives
                 .Where(d => d.Status == ArchiveStatus.Installed);
             if (CurrentSelectedAssetLibrary is not null)
                 archivesQuery = archivesQuery.Where(d => d.AssetLibraryId == CurrentSelectedAssetLibrary.Id);
 
             await foreach (var archive in archivesQuery.OrderBy(d => d.ArchiveName.ToLower()).AsAsyncEnumerable())
             {
-                var files = await dbContext.AssetFiles.Where(d => d.ArchiveId == archive.Id).ToListAsync();
+                var files = await _dbContext.AssetFiles.Where(d => d.ArchiveId == archive.Id).ToListAsync();
                 archive.AssetFiles = files;
 
                 var node = InstalledArchivesTree.LoadArchive(archive);
@@ -220,10 +218,8 @@ public class MainWindowViewModel : ViewModelBase
 
         await Task.Run(async () =>
         {
-            await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-
             var archivesToInstallNames = archivesToInstall.Select(GetLoadedArchiveName).ToArray();
-            var existingArchives = await dbContext.Archives
+            var existingArchives = await _dbContext.Archives
                 .Where(a => a.AssetLibraryId == CurrentSelectedAssetLibrary.Id &&
                             archivesToInstallNames.Contains(a.ArchiveName))
                 .Include(a => a.AssetFiles)
@@ -253,8 +249,8 @@ public class MainWindowViewModel : ViewModelBase
                 };
 
                 dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
-                dbContext.Archives.Add(dbArchive);
-                await dbContext.SaveChangesAsync();
+                _dbContext.Archives.Add(dbArchive);
+                await _dbContext.SaveChangesAsync();
 
                 Dispatcher.UIThread.Post(() => LoadedArchives.Remove(archive));
             }
@@ -282,10 +278,9 @@ public class MainWindowViewModel : ViewModelBase
             return;
 
         AllowArchiveLoad = false;
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
         var selectedInstallArchiveIds = SelectedInstallNodes.Select(n => n.DbId).ToArray();
-        var archives = await dbContext.Archives
+        var archives = await _dbContext.Archives
             .Include(a => a.AssetLibrary)
             .Include(a => a.AssetFiles)
             .Where(a => selectedInstallArchiveIds.Contains(a.Id))
@@ -304,7 +299,7 @@ public class MainWindowViewModel : ViewModelBase
             messageProgress.Report($"Reading {selectedInstallArchiveIds.Length} archives to uninstall...");
 
             var archiveIds = archives.Select(a => a.Id).ToArray();
-            var deleteFileExceptions = await dbContext.AssetFiles
+            var deleteFileExceptions = await _dbContext.AssetFiles
                 .Where(f => !archiveIds.Contains(f.ArchiveId) && f.InstalledPath != null)
                 .ToListAsync();
 
@@ -323,8 +318,8 @@ public class MainWindowViewModel : ViewModelBase
                 var uninstaller = new DazArchiveUninstaller(archive);
                 await uninstaller.UninstallArchiveAsync(deleteFileExceptions.Select(d => d.InstalledPath!).ToHashSet());
 
-                dbContext.Archives.Remove(archive);
-                await dbContext.SaveChangesAsync();
+                _dbContext.Archives.Remove(archive);
+                await _dbContext.SaveChangesAsync();
 
                 messageProgress.Report($"Uninstalled {archive.ArchiveName}");
                 percentageProgress.Report(index * increment);
@@ -426,12 +421,11 @@ public class MainWindowViewModel : ViewModelBase
             return;
 
         OnPropertyChanged(nameof(UninstallButtonEnabled));
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        var archive = await dbContext.Archives.FindAsync(selectedItem.DbId);
+        var archive = await _dbContext.Archives.FindAsync(selectedItem.DbId);
         if (archive is null)
             return;
 
-        var files = await dbContext.AssetFiles.Where(d => d.ArchiveId == archive.Id).ToListAsync();
+        var files = await _dbContext.AssetFiles.Where(d => d.ArchiveId == archive.Id).ToListAsync();
         var details = new List<string>
         {
             $"File: {Path.GetFileName(archive.ArchiveName)}",

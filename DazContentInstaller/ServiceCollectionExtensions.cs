@@ -24,8 +24,8 @@ public static class ServiceCollectionExtensions
 
         services.Configure<InstallerConfig>(o => o.AppDataPath = appDataPath);
 
-        services.AddDbContextFactory<ApplicationDbContext>(o =>
-            o.UseSqlite($"Data Source={config.DbPath}"));
+        services.AddDbContext<ApplicationDbContext>(o =>
+            o.UseSqlite($"Data Source={config.DbPath}"), ServiceLifetime.Singleton);
 
         services.AddSingleton<SettingsService>();
         services.AddSingleton<IAppInfoService, AppInfoService>();

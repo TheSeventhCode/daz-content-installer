@@ -413,11 +413,5 @@ FodyWeavers.xsd
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/csharp,visualstudiocode
-Show Obsidian Search Sidebar
-Settings
-Open Search in Obsidian
-Pin Sidebar
-Search
-Search your vault ... (Alt+Shift+F)
-0 result(s) of 0 (using )
-❗ Could not connect to Obsidian. Please make sure Obsidian is running and check your extension settings.
+
+.idea/.idea.DazContentInstaller/.idea/AugmentWebviewStateStore.xml
