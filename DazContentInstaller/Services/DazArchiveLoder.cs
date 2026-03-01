@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,8 +7,8 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using DazContentInstaller.Database;
 using DazContentInstaller.Models;
-using SharpSevenZip;
-using SharpSevenZip.Exceptions;
+using SharpCompress.Common;
+using SharpCompress.Readers;
 
 namespace DazContentInstaller.Services;
 
@@ -80,11 +80,7 @@ public class DazArchiveLoader : IDisposable
 
         var archiveName = Path.GetFileName(_archivePath);
 
-        using var archive = new SharpSevenZipExtractor(_archivePath);
-        if (!archive.Check())
-            throw new ExtractionFailedException("Archie file could not be read or is corrupted.");
-
-        await archive.ExtractArchiveAsync(_workingPath.FullName);
+        await ExtractArchiveAsync(_archivePath, _workingPath.FullName);
         messageProgress?.Report("Extracted archive: " + archiveName);
 
         var filePath = _parentArchive is not null
@@ -97,27 +93,32 @@ public class DazArchiveLoader : IDisposable
                     ? Path.GetFileName(_parentArchive.FilePath)
                     : _parentArchive.Name, Path.GetFileName(_archivePath))
             : Path.GetFileNameWithoutExtension(_archivePath);
+        var extractedFiles = EnumerateExtractedFiles(_workingPath.FullName).ToList();
+        ulong unpackedSize = 0;
+        foreach (var extractedFile in extractedFiles)
+            unpackedSize += extractedFile.FileSize;
         var loadedArchive = new LoadedArchive(fileName, filePath,
-            archive.UnpackedSize, _parentArchive, DigArchiveBaseDirectory(archive.ArchiveFileNames));
+            (long)unpackedSize, _parentArchive,
+            DigArchiveBaseDirectory(extractedFiles.Select(e => e.RelativePath)));
 
-        if (!archive.ArchiveFileData.Where(d => !d.IsDirectory)
-                .All(d => PackagedArchiveFileExtensions.Contains(Path.GetExtension(d.FileName).ToLower())) &&
-            !IsTemplateArchive(archive))
+        if (!extractedFiles
+                .All(d => PackagedArchiveFileExtensions.Contains(Path.GetExtension(d.RelativePath).ToLowerInvariant())) &&
+            !IsTemplateArchive(extractedFiles.Select(f => f.RelativePath)))
         {
-            await HandleArchiveAsync(loadedArchive, archive, messageProgress, percentProgress);
-            messageProgress?.Report($"Analyzed {archive.FileName}");
+            await HandleArchiveAsync(loadedArchive, extractedFiles, messageProgress, percentProgress);
+            messageProgress?.Report($"Analyzed {archiveName}");
         }
 
-        var subArchives = archive.ArchiveFileData
-            .Where(d => ArchiveFileExtensions.Contains(Path.GetExtension(d.FileName).ToLower()))
+        var subArchives = extractedFiles
+            .Where(d => ArchiveFileExtensions.Contains(Path.GetExtension(d.RelativePath).ToLowerInvariant()))
             .ToList();
 
-        var increment = Math.Ceiling(100D / subArchives.Count);
+        var increment = subArchives.Count == 0 ? 100D : Math.Ceiling(100D / subArchives.Count);
         var progress = 0;
         percentProgress?.Report(0);
         foreach (var subArchive in subArchives)
         {
-            var subArchiveFile = new FileInfo(Path.Combine(_workingPath.FullName, subArchive.FileName));
+            var subArchiveFile = new FileInfo(subArchive.FullPath);
 
             var subArchiveWorkingDirectory = Path.Combine(subArchiveFile.DirectoryName!,
                 Path.GetFileNameWithoutExtension(subArchiveFile.Name));
@@ -161,12 +162,12 @@ public class DazArchiveLoader : IDisposable
             : Path.Combine(GetFullParentArchivePath(parentArchive.ParentArchive), parentArchive.FilePath);
     }
 
-    private static bool IsTemplateArchive(SharpSevenZipExtractor archive)
+    private static bool IsTemplateArchive(IEnumerable<string> fileNames)
     {
-        var fileNames = archive.ArchiveFileNames;
+        var normalizedFileNames = fileNames.Select(NormalizeArchivePath).ToList();
         return !StandardAssetsBasePaths.Any(b =>
-            fileNames.Any(f => f.StartsWith(b, StringComparison.OrdinalIgnoreCase) ||
-                               f.Contains($"{Path.DirectorySeparatorChar}{b}{Path.DirectorySeparatorChar}",
+            normalizedFileNames.Any(f => f.StartsWith(b, StringComparison.OrdinalIgnoreCase) ||
+                               f.Contains($"/{b}/",
                                    StringComparison.OrdinalIgnoreCase)));
     }
 
@@ -177,16 +178,22 @@ public class DazArchiveLoader : IDisposable
         {
             if (depth > 10) return starter?.Trim(Path.DirectorySeparatorChar);
 
-            var basePaths = fileNames.GroupBy(d => d.Split(Path.DirectorySeparatorChar).First()).ToList();
+            var basePaths = fileNames.GroupBy(d => SplitArchivePath(d).FirstOrDefault() ?? string.Empty).ToList();
             if (StandardAssetsBasePaths.Any(b =>
                     basePaths.Any(p => p.Key.Equals(b, StringComparison.OrdinalIgnoreCase))))
                 return starter?.Trim(Path.DirectorySeparatorChar);
 
             var deeperLevel =
-                basePaths.SelectMany(g => g.Select(p => p.Split(g.Key + Path.DirectorySeparatorChar).Last()));
+                basePaths.SelectMany(g => g.Select(p =>
+                {
+                    var normalized = NormalizeArchivePath(p);
+                    return normalized.StartsWith(g.Key + "/", StringComparison.OrdinalIgnoreCase)
+                        ? normalized[(g.Key.Length + 1)..]
+                        : normalized;
+                }));
             fileNames = deeperLevel;
             starter += Path.DirectorySeparatorChar + basePaths.FirstOrDefault(d =>
-                d.Any(b => b.Split(Path.DirectorySeparatorChar).Any(s =>
+                d.Any(b => SplitArchivePath(b).Any(s =>
                     StandardAssetsBasePaths.Any(p => p.Equals(s, StringComparison.OrdinalIgnoreCase)))))?.Key;
 
             starter ??= basePaths.First().Key;
@@ -204,19 +211,19 @@ public class DazArchiveLoader : IDisposable
         };
     }
 
-    private static async Task ExtractMetadataAsync(LoadedArchive loadedArchive, SharpSevenZipExtractor archiveFile,
+    private static async Task ExtractMetadataAsync(LoadedArchive loadedArchive, IReadOnlyCollection<ExtractedFile> files,
         IProgress<string>? progress)
     {
         foreach (var metadataFile in MetadataFiles)
         {
-            var archiveFileInfo = archiveFile.ArchiveFileData.FirstOrDefault(e =>
-                Path.GetFileName(e.FileName).Equals(metadataFile, StringComparison.OrdinalIgnoreCase));
+            var extractedMetadataFile = files
+                .FirstOrDefault(f => Path.GetFileName(f.RelativePath).Equals(metadataFile, StringComparison.OrdinalIgnoreCase));
 
-            if (archiveFileInfo == default || archiveFileInfo.Size >= 100000) continue; // Reasonable size limit
+            if (extractedMetadataFile is null || extractedMetadataFile.FileSize >= 100000) continue; // Reasonable size limit
 
             progress?.Report($"Reading {metadataFile}...");
-            var content = await ReadTextFromEntryAsync(archiveFile, archiveFileInfo);
-            loadedArchive.Metadata[archiveFileInfo.FileName] = content;
+            var content = await File.ReadAllTextAsync(extractedMetadataFile.FullPath, Encoding.UTF8);
+            loadedArchive.Metadata[extractedMetadataFile.RelativePath] = content;
 
             if (metadataFile.EndsWith("Supplement.dsx"))
             {
@@ -227,17 +234,6 @@ public class DazArchiveLoader : IDisposable
 
         // Analyze folder structure for better naming
         ImproveAssetNaming(loadedArchive);
-    }
-
-    private static async Task<string> ReadTextFromEntryAsync(SharpSevenZipExtractor archive,
-        ArchiveFileInfo archiveFileInfo)
-    {
-        await using var memoryStream = new MemoryStream((int)archiveFileInfo.Size);
-        await archive.ExtractFileAsync(archiveFileInfo.Index, memoryStream);
-
-        memoryStream.Position = 0;
-        using var reader = new StreamReader(memoryStream, Encoding.UTF8);
-        return await reader.ReadToEndAsync();
     }
 
     private static string GetProductName(LoadedArchive loadedArchive, string xmlContent)
@@ -288,34 +284,35 @@ public class DazArchiveLoader : IDisposable
         }
     }
 
-    private async Task HandleArchiveAsync(LoadedArchive loadedArchive, SharpSevenZipExtractor archiveFile,
+    private async Task HandleArchiveAsync(LoadedArchive loadedArchive, IReadOnlyCollection<ExtractedFile> files,
         IProgress<string>? messageProgress, IProgress<int>? percentProgress)
     {
-        AnalyzeZipContents(loadedArchive, archiveFile, messageProgress, percentProgress);
+        AnalyzeZipContents(loadedArchive, files, messageProgress, percentProgress);
 
-        await ExtractMetadataAsync(loadedArchive, archiveFile, messageProgress);
+        await ExtractMetadataAsync(loadedArchive, files, messageProgress);
         messageProgress?.Report($"Extracted {loadedArchive.Name} metadata...");
 
         loadedArchive.ArchiveStatus = ArchiveStatus.Ready;
     }
 
-    private void AnalyzeZipContents(LoadedArchive loadedArchive, SharpSevenZipExtractor archiveFile,
+    private void AnalyzeZipContents(LoadedArchive loadedArchive, IReadOnlyCollection<ExtractedFile> files,
         IProgress<string>? messageProgress, IProgress<int>? percentProgress)
     {
         var categories = new HashSet<string>();
         var assetTypes = new HashSet<AssetType>();
         var fileCount = 0;
 
-        foreach (var fileInfo in archiveFile.ArchiveFileData.Where(f => !f.IsDirectory))
+        foreach (var fileInfo in files)
         {
             fileCount++;
+            var normalizedPath = fileInfo.RelativePath;
             loadedArchive.ContainedFiles.Add(new AssetFile
             {
-                FileName = fileInfo.FileName,
-                FileSize = fileInfo.Size
+                FileName = normalizedPath,
+                FileSize = fileInfo.FileSize
             });
 
-            var pathParts = fileInfo.FileName.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+            var pathParts = SplitArchivePath(normalizedPath);
 
             foreach (var part in pathParts)
             {
@@ -328,7 +325,7 @@ public class DazArchiveLoader : IDisposable
                 }
             }
 
-            var extension = Path.GetExtension(fileInfo.FileName);
+            var extension = Path.GetExtension(normalizedPath);
             if (_dazFileExtensions.Contains(extension.ToLower()))
                 loadedArchive.Metadata[$"Has{extension.TrimStart('.').ToUpper()}Files"] = true;
 
@@ -347,4 +344,34 @@ public class DazArchiveLoader : IDisposable
         else
             loadedArchive.Metadata["FileCount"] = fileCount;
     }
+
+    private static async Task ExtractArchiveAsync(string archivePath, string destination)
+    {
+        await using var stream = File.OpenRead(archivePath);
+        using var reader = ReaderFactory.OpenReader(stream);
+        while (reader.MoveToNextEntry())
+        {
+            if (reader.Entry.IsDirectory) continue;
+            await Task.Run(() => reader.WriteEntryToDirectory(destination));
+        }
+    }
+
+    private static string NormalizeArchivePath(string path) =>
+        path.Replace('\\', '/');
+
+    private static string[] SplitArchivePath(string path) =>
+        NormalizeArchivePath(path).Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+    private static IEnumerable<ExtractedFile> EnumerateExtractedFiles(string rootPath)
+    {
+        foreach (var file in Directory.EnumerateFiles(rootPath, "*", SearchOption.AllDirectories))
+        {
+            yield return new ExtractedFile(
+                FullPath: file,
+                RelativePath: NormalizeArchivePath(Path.GetRelativePath(rootPath, file)),
+                FileSize: (ulong)new FileInfo(file).Length);
+        }
+    }
+
+    private sealed record ExtractedFile(string FullPath, string RelativePath, ulong FileSize);
 }

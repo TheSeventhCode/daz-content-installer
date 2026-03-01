@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -6,7 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using DazContentInstaller.Database;
 using DazContentInstaller.Models;
-using SharpSevenZip;
+using SharpCompress.Readers;
 
 namespace DazContentInstaller.Services;
 
@@ -91,8 +91,13 @@ public class DazArchiveInstaller : IDisposable
                 loadedArchive.FilePath.Split(Path.GetExtension(loadedArchive.FilePath))[0]);
         }
 
-        using var archive = new SharpSevenZipExtractor(archivePath);
-        await archive.ExtractArchiveAsync(currentDirectory);
+        await using var stream = File.OpenRead(archivePath);
+        using var reader = ReaderFactory.OpenReader(stream);
+        while (reader.MoveToNextEntry())
+        {
+            if (reader.Entry.IsDirectory) continue;
+            await Task.Run(() => reader.WriteEntryToDirectory(currentDirectory));
+        }
         return currentDirectory;
     }
 

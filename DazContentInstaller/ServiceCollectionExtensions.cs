@@ -18,7 +18,10 @@ public static class ServiceCollectionExtensions
         var appInfo = new AppInfoService();
         services.AddSingleton(appInfo);
 
-        var appDataPath = AppDomain.CurrentDomain.BaseDirectory;
+        var legacyBaseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+        var appDataPath = AppDataPathResolver.ResolveAppDataPath(legacyBaseDirectory);
+        AppDataPathResolver.CopyLegacyDataIfNeeded(legacyBaseDirectory, appDataPath);
+        Directory.CreateDirectory(appDataPath);
 
         var config = new InstallerConfig { AppDataPath = appDataPath };
 
