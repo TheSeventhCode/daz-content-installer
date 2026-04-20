@@ -220,6 +220,36 @@
     "hash": "sha256-Vv1EuoBSfjCJ7EKzxh10/nA/rpaFU8D8+bdZZQWzw2I="
   },
   {
+    "pname": "Microsoft.ICU.ICU4C.Runtime",
+    "version": "72.1.0.3",
+    "hash": "sha256-z+ko6HQKPfY26qCb2T2JEmiD8zjwGxXoZ/SHBOYSZEk="
+  },
+  {
+    "pname": "Microsoft.ICU.ICU4C.Runtime.linux-arm64",
+    "version": "72.1.0.3",
+    "hash": "sha256-HwkPxFQpKSriH5GZ1blWrTVww4p3eOpAhSWGQXJ+768="
+  },
+  {
+    "pname": "Microsoft.ICU.ICU4C.Runtime.linux-x64",
+    "version": "72.1.0.3",
+    "hash": "sha256-Svs7TC55kJrXtTETX0t0KxmcZx6pOW7kJA93+JjqUgc="
+  },
+  {
+    "pname": "Microsoft.ICU.ICU4C.Runtime.win-arm64",
+    "version": "72.1.0.3",
+    "hash": "sha256-Mb9fG/Qsvv/wyveIlCaS55gqSvLzMytwxoc7pZzgfgs="
+  },
+  {
+    "pname": "Microsoft.ICU.ICU4C.Runtime.win-x64",
+    "version": "72.1.0.3",
+    "hash": "sha256-rWfouLPVGerxXUlpoygUz240uB1zD0B0tCTGmk6jTPE="
+  },
+  {
+    "pname": "Microsoft.ICU.ICU4C.Runtime.win-x86",
+    "version": "72.1.0.3",
+    "hash": "sha256-w4/QpaykSmXKXAS1esoKmmXLRRIqKlpwlK3SfYwtJAg="
+  },
+  {
     "pname": "ReactiveUI",
     "version": "20.1.1",
     "hash": "sha256-p9l2GMzBRchKb4gW9pQ3DIKhs2O9fX3t/V7jDDztBqE="

@@ -44,7 +44,31 @@ Pre-built releases for Windows are available on the [Releases page](https://gith
    Double-click `DazContentInstaller.exe` inside the extracted folder to start the application. No installation is required.
 
 > **Note:**  
-> macOS and Linux users will need to build from source (see the Development section below).
+> macOS users will need to build from source. On NixOS, use the included `flake.nix` to build or run a wrapped package instead of the generic Linux zip.
+
+## NixOS
+
+NixOS users should use the flake in this repository so the app is launched with the native libraries Avalonia and Skia need.
+
+Run directly:
+
+```sh
+nix run .
+```
+
+Build a local package:
+
+```sh
+nix build .#daz-content-installer
+./result/bin/DazContentInstaller
+```
+
+Enter the development shell:
+
+```sh
+nix develop
+dotnet run --project DazContentInstaller/DazContentInstaller.csproj
+```
 
 ## Archive Compatibility
 

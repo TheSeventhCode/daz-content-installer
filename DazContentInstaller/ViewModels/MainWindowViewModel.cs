@@ -274,60 +274,71 @@ public class MainWindowViewModel : ViewModelBase
             return;
 
         AllowArchiveLoad = false;
-        var archivesToInstall =
-            SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
-
-        IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
-        IProgress<double> percentageProgress = new Progress<double>(s => StatusProgress = (int)s);
-        StatusProgress = 0;
-        StatusBarColor = Brushes.DodgerBlue;
-
-        await Task.Run(async () =>
+        try
         {
-            var archivesToInstallNames = archivesToInstall.Select(GetLoadedArchiveName).ToArray();
-            var existingArchives = await _dbContext.Archives
-                .Where(a => a.AssetLibraryId == CurrentSelectedAssetLibrary.Id &&
-                            archivesToInstallNames.Contains(a.ArchiveName))
-                .Include(a => a.AssetFiles)
-                .ToListAsync();
+            var archivesToInstall =
+                SelectedArchives.Count > 0 ? SelectedArchives.ToList() : LoadedArchives.ToList();
 
-            existingArchives = existingArchives.Where(e => archivesToInstall.Any(a =>
-                    a.ContainedFiles.Count == e.AssetFiles.Count && GetLoadedArchiveName(a).Equals(e.ArchiveName)))
-                .ToList();
+            IProgress<string> messageProgress = new Progress<string>(s => StatusText = s);
+            IProgress<double> percentageProgress = new Progress<double>(s => StatusProgress = (int)s);
+            StatusProgress = 0;
+            StatusBarColor = Brushes.DodgerBlue;
 
-            var loadedArchivesToSkip = archivesToInstall
-                .IntersectBy(existingArchives.Select(d => d.ArchiveName), GetLoadedArchiveName).ToList();
-            loadedArchivesToSkip.ForEach(d => d.ArchiveStatus = ArchiveStatus.Duplicate);
-
-            archivesToInstall = archivesToInstall.Except(loadedArchivesToSkip).ToList();
-            using var installer = new DazArchiveInstaller(archivesToInstall, _settingsService.CurrentSettings);
-            await foreach (var archive in installer.InstallArchivesAsync(CurrentSelectedAssetLibrary.Path,
-                               messageProgress,
-                               percentageProgress))
+            await Task.Run(async () =>
             {
-                var dbArchive = new Archive
+                var archivesToInstallNames = archivesToInstall.Select(GetLoadedArchiveName).ToArray();
+                var existingArchives = await _dbContext.Archives
+                    .Where(a => a.AssetLibraryId == CurrentSelectedAssetLibrary.Id &&
+                                archivesToInstallNames.Contains(a.ArchiveName))
+                    .Include(a => a.AssetFiles)
+                    .ToListAsync();
+
+                existingArchives = existingArchives.Where(e => archivesToInstall.Any(a =>
+                        a.ContainedFiles.Count == e.AssetFiles.Count && GetLoadedArchiveName(a).Equals(e.ArchiveName)))
+                    .ToList();
+
+                var loadedArchivesToSkip = archivesToInstall
+                    .IntersectBy(existingArchives.Select(d => d.ArchiveName), GetLoadedArchiveName).ToList();
+                loadedArchivesToSkip.ForEach(d => d.ArchiveStatus = ArchiveStatus.Duplicate);
+
+                archivesToInstall = archivesToInstall.Except(loadedArchivesToSkip).ToList();
+                using var installer = new DazArchiveInstaller(archivesToInstall, _settingsService.CurrentSettings);
+                await foreach (var archive in installer.InstallArchivesAsync(CurrentSelectedAssetLibrary.Path,
+                                   messageProgress,
+                                   percentageProgress))
                 {
-                    ArchiveName = archive.Name,
-                    ArchiveSize = archive.FileSizeBytes,
-                    Status = ArchiveStatus.Installed,
-                    CustomAssetsBasePath = archive.CustomAssetBaseDirectory,
-                    AssetLibraryId = CurrentSelectedAssetLibrary.Id
-                };
+                    var dbArchive = new Archive
+                    {
+                        ArchiveName = archive.Name,
+                        ArchiveSize = archive.FileSizeBytes,
+                        Status = ArchiveStatus.Installed,
+                        CustomAssetsBasePath = archive.CustomAssetBaseDirectory,
+                        AssetLibraryId = CurrentSelectedAssetLibrary.Id
+                    };
 
-                dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
-                _dbContext.Archives.Add(dbArchive);
-                await _dbContext.SaveChangesAsync();
+                    dbArchive.AssetFiles.AddRange(archive.ContainedFiles);
+                    _dbContext.Archives.Add(dbArchive);
+                    await _dbContext.SaveChangesAsync();
 
-                Dispatcher.UIThread.Post(() => LoadedArchives.Remove(archive));
-            }
-        });
+                    Dispatcher.UIThread.Post(() => LoadedArchives.Remove(archive));
+                }
+            });
 
-        await Task.Run(async () => { await LoadInstalledArchivesAsync(); });
+            await Task.Run(async () => { await LoadInstalledArchivesAsync(); });
 
-        messageProgress.Report($"Installed {archivesToInstall.Count} archives");
-        percentageProgress.Report(100);
-        StatusBarColor = Brushes.Green;
-        AllowArchiveLoad = true;
+            messageProgress.Report($"Installed {archivesToInstall.Count} archives");
+            percentageProgress.Report(100);
+            StatusBarColor = Brushes.Green;
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Install failed: {ex.Message}";
+            StatusBarColor = Brushes.Red;
+        }
+        finally
+        {
+            AllowArchiveLoad = true;
+        }
     }
 
     private static string GetLoadedArchiveName(LoadedArchive archiveOld) =>

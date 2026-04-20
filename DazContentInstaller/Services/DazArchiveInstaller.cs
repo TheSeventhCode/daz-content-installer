@@ -25,7 +25,8 @@ public class DazArchiveInstaller : IDisposable
 
     public void Dispose()
     {
-        _workingDirectory.Delete(true);
+        if (_workingDirectory.Exists)
+            _workingDirectory.Delete(true);
     }
 
     public async IAsyncEnumerable<LoadedArchive> InstallArchivesAsync(string libraryPath,
@@ -87,9 +88,10 @@ public class DazArchiveInstaller : IDisposable
         {
             var extractedDirectory = await FullExtractAsync(loadedArchive.ParentArchive, currentDirectory);
             archivePath = Path.Combine(extractedDirectory, loadedArchive.FilePath);
-            currentDirectory = Path.Combine(extractedDirectory,
-                loadedArchive.FilePath.Split(Path.GetExtension(loadedArchive.FilePath))[0]);
+            currentDirectory = GetExtractionDirectory(extractedDirectory, loadedArchive.FilePath);
         }
+
+        Directory.CreateDirectory(currentDirectory);
 
         await using var stream = File.OpenRead(archivePath);
         using var reader = ReaderFactory.OpenReader(stream);
@@ -99,6 +101,16 @@ public class DazArchiveInstaller : IDisposable
             await Task.Run(() => reader.WriteEntryToDirectory(currentDirectory));
         }
         return currentDirectory;
+    }
+
+    private static string GetExtractionDirectory(string parentDirectory, string archivePath)
+    {
+        var archiveDirectory = Path.GetDirectoryName(archivePath);
+        var archiveName = Path.GetFileNameWithoutExtension(archivePath);
+
+        return string.IsNullOrEmpty(archiveDirectory)
+            ? Path.Combine(parentDirectory, archiveName)
+            : Path.Combine(parentDirectory, archiveDirectory, archiveName);
     }
 
     private static void CopyDirectory(DirectoryInfo sourceDir, DirectoryInfo destinationDir)
