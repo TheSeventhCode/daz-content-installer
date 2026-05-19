@@ -17,9 +17,9 @@ A utility for managing and installing third-party Daz 3D Content. This applicati
 
 ## Built With
 
-This project is built with .NET 9 and Avalonia UI. Key dependencies include:
+This project is built with .NET 10 and Avalonia UI. Key dependencies include:
 
-*   **[.NET 9](https://dotnet.microsoft.com/en-us/download/dotnet/9.0)** - The underlying framework.
+*   **[.NET 10](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)** - The underlying framework.
 *   **[Avalonia](https://avaloniaui.net/)** - A cross-platform UI framework for .NET.
 *   **[ReactiveUI](https://reactiveui.net/)** - An MVVM framework for .NET.
 *   **[Entity Framework Core (SQLite)](https://docs.microsoft.com/en-us/ef/core/)** - For the local database.
@@ -48,12 +48,18 @@ Pre-built releases for Windows are available on the [Releases page](https://gith
 
 ## NixOS
 
-NixOS users should use the flake in this repository so the app is launched with the native libraries Avalonia and Skia need.
+NixOS users should use the flake in this repository so the app is launched with the native libraries and font configuration Avalonia and Skia need.
 
 Run directly:
 
 ```sh
 nix run .
+```
+
+Run directly from GitHub:
+
+```sh
+nix run github:TheSeventhCode/daz-content-installer
 ```
 
 Build a local package:
@@ -63,11 +69,23 @@ nix build .#daz-content-installer
 ./result/bin/DazContentInstaller
 ```
 
+Install it into a profile:
+
+```sh
+nix profile install .#daz-content-installer
+```
+
 Enter the development shell:
 
 ```sh
 nix develop
 dotnet run --project DazContentInstaller/DazContentInstaller.csproj
+```
+
+When NuGet package references change, refresh `deps.json` before committing:
+
+```sh
+nix develop -c update-dci-deps
 ```
 
 ## Archive Compatibility
@@ -78,7 +96,7 @@ If you encounter an archive that doesn't work as expected, please [create an iss
 
 ## Development
 
-To build and run this project from source, you will need the .NET 9 SDK installed.
+To build and run this project from source, you will need the .NET 10 SDK installed.
 
 1.  **Clone the repository:**
     ```sh
