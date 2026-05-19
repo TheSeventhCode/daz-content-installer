@@ -32,6 +32,7 @@ public class DazArchiveInstaller : IDisposable
     public async IAsyncEnumerable<LoadedArchive> InstallArchivesAsync(string libraryPath,
         IProgress<string>? messageProgress = null, IProgress<double>? percentProgress = null)
     {
+        var resolvedLibraryPath = GetCanonicalPath(libraryPath);
         var index = 0;
         var increment = Math.Ceiling(100D / _loadedArchivesToInstall.Count());
         foreach (var loadedArchive in _loadedArchivesToInstall)
@@ -44,7 +45,7 @@ public class DazArchiveInstaller : IDisposable
                 ? extractedArchiveLocation
                 : Path.Combine(extractedArchiveLocation, loadedArchive.CustomAssetBaseDirectory));
 
-            CopyDirectory(extractionDirectory, new DirectoryInfo(libraryPath));
+            CopyDirectory(extractionDirectory, new DirectoryInfo(resolvedLibraryPath));
             messageProgress?.Report($"Extracted {loadedArchive.Name}...");
             percentProgress?.Report(index * increment + increment / 3);
             
@@ -64,15 +65,16 @@ public class DazArchiveInstaller : IDisposable
             
             if (_settings.CreateBackupBeforeInstall)
             {
-                var archiveBackupPath = Path.Combine(libraryPath, "ArchiveBackup");
-                Directory.CreateDirectory(archiveBackupPath);
+                var archiveBackupDirectory = Path.Combine(resolvedLibraryPath, "ArchiveBackup");
+                Directory.CreateDirectory(archiveBackupDirectory);
                 var archivePath = extractedArchiveLocation == _workingDirectory.FullName
                     ? loadedArchive.FilePath
                     : extractedArchiveLocation + Path.GetExtension(loadedArchive.FilePath);
 
-                archiveBackupPath = Path.Combine(archiveBackupPath, Path.GetFileName(archivePath));
+                var archiveBackupPath = Path.Combine(archiveBackupDirectory, Path.GetFileName(archivePath));
 
-                File.Copy(archivePath, archiveBackupPath, true);
+                if (!PathsReferToSameLocation(archivePath, archiveBackupPath))
+                    File.Copy(archivePath, archiveBackupPath, true);
             }
             
             percentProgress?.Report(index * increment + increment);
@@ -130,5 +132,48 @@ public class DazArchiveInstaller : IDisposable
             var newDestinationDir = new DirectoryInfo(Path.Combine(destinationDir.FullName, subDir.Name));
             CopyDirectory(subDir, newDestinationDir);
         }
+    }
+
+    private static bool PathsReferToSameLocation(string leftPath, string rightPath)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(GetCanonicalPath(leftPath), GetCanonicalPath(rightPath), comparison);
+    }
+
+    private static string GetCanonicalPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(fullPath);
+
+        if (string.IsNullOrEmpty(root))
+            return Path.TrimEndingDirectorySeparator(fullPath);
+
+        var segments = fullPath[root.Length..]
+            .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        var resolvedPath = root;
+
+        foreach (var segment in segments)
+        {
+            var nextPath = Path.Combine(resolvedPath, segment);
+            var isDirectory = Directory.Exists(nextPath);
+            var isFile = !isDirectory && File.Exists(nextPath);
+
+            if (!isDirectory && !isFile)
+            {
+                resolvedPath = nextPath;
+                continue;
+            }
+
+            FileSystemInfo fileSystemInfo = isDirectory
+                ? new DirectoryInfo(nextPath)
+                : new FileInfo(nextPath);
+
+            resolvedPath = fileSystemInfo.ResolveLinkTarget(true)?.FullName ?? fileSystemInfo.FullName;
+        }
+
+        return Path.TrimEndingDirectorySeparator(resolvedPath);
     }
 }
