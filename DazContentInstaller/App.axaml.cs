@@ -1,9 +1,6 @@
 using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Data.Core;
-using Avalonia.Data.Core.Plugins;
-using System.Linq;
 using Avalonia.Markup.Xaml;
 using DazContentInstaller.Database;
 using DazContentInstaller.ViewModels;
@@ -34,7 +31,6 @@ public partial class App : Application
         switch (ApplicationLifetime)
         {
             case IClassicDesktopStyleApplicationLifetime desktop:
-                DisableAvaloniaDataAnnotationValidation();
                 desktop.MainWindow = new MainWindow
                 {
                     DataContext = vm
@@ -49,18 +45,5 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
-    }
-
-    private void DisableAvaloniaDataAnnotationValidation()
-    {
-        // Get an array of plugins to remove
-        var dataValidationPluginsToRemove =
-            BindingPlugins.DataValidators.OfType<DataAnnotationsValidationPlugin>().ToArray();
-
-        // remove each entry found
-        foreach (var plugin in dataValidationPluginsToRemove)
-        {
-            BindingPlugins.DataValidators.Remove(plugin);
-        }
     }
 } 

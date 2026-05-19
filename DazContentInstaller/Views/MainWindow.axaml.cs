@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -41,16 +42,10 @@ public partial class MainWindow : Window
         try
         {
             DropZone.Background = Avalonia.Media.Brushes.Transparent;
+            var archivePaths = GetDroppedArchivePaths(e);
+            if (archivePaths.Count == 0) return;
 
-            if (!e.Data.Contains(DataFormats.Files)) return;
-
-            var files = e.Data.GetFiles();
-            var zipFiles = files?.Where(f =>
-                _allowedExtensions.Any(ae => f.Name.EndsWith(ae, StringComparison.OrdinalIgnoreCase)));
-
-            if (zipFiles == null) return;
-
-            await ViewModel.LoadArchiveFilesFromDiskAsync([.. zipFiles.Select(f => f.Path.LocalPath)]);
+            await ViewModel.LoadArchiveFilesFromDiskAsync(archivePaths);
         }
         catch (Exception ex)
         {
@@ -60,13 +55,30 @@ public partial class MainWindow : Window
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
-        if (!e.Data.Contains(DataFormats.Files)) return;
-        var files = e.Data.GetFiles();
-        if (files?.Any(f => _allowedExtensions.Any(ae => f.Name.EndsWith(ae, StringComparison.OrdinalIgnoreCase))) !=
-            true) return;
+        var archivePaths = GetDroppedArchivePaths(e);
+        if (archivePaths.Count == 0)
+        {
+            e.DragEffects = DragDropEffects.None;
+            DropZone.Background = Avalonia.Media.Brushes.Transparent;
+            return;
+        }
 
         e.DragEffects = DragDropEffects.Copy;
         DropZone.Background = Avalonia.Media.Brushes.LightBlue;
+    }
+
+    private List<string> GetDroppedArchivePaths(DragEventArgs e)
+    {
+        if (!e.DataTransfer.Formats.Contains(DataFormat.File))
+        {
+            return [];
+        }
+
+        return [.. e.DataTransfer.TryGetFiles()?
+            .OfType<IStorageFile>()
+            .Where(f => _allowedExtensions.Any(ae => f.Name.EndsWith(ae, StringComparison.OrdinalIgnoreCase)))
+            .Select(f => f.Path.LocalPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path)) ?? []];
     }
 
     private async void OnBrowseClick(object? sender, RoutedEventArgs e)

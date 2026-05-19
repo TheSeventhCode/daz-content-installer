@@ -25,13 +25,14 @@ public static class ServiceCollectionExtensions
 
         var config = new InstallerConfig { AppDataPath = appDataPath };
 
+        services.AddSingleton<IAppInfoService, AppInfoService>();
+        
         services.Configure<InstallerConfig>(o => o.AppDataPath = appDataPath);
 
         services.AddDbContext<ApplicationDbContext>(o =>
             o.UseSqlite($"Data Source={config.DbPath}"), ServiceLifetime.Singleton);
 
         services.AddSingleton<SettingsService>();
-        services.AddSingleton<IAppInfoService, AppInfoService>();
 
         services.AddTransient<MainWindowViewModel>();
         services.AddTransient<SettingsWindowViewModel>();

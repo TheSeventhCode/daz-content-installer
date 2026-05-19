@@ -203,7 +203,7 @@
                         </Grid>
 
                         <!-- Search Box -->
-                        <TextBox Grid.Row="0" Watermark="Search installed assets..."
+                        <TextBox Grid.Row="0" PlaceholderText="Search installed assets..."
                                  Text="{Binding InstalledAssetsSearch}" />
                     </StackPanel>
 
