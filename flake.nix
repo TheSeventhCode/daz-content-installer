@@ -98,6 +98,17 @@ EOF
 
           echo "Wrote $out_file"
         '';
+        desktopItem = pkgs.makeDesktopItem {
+          name = "daz-content-installer";
+          desktopName = "DAZ Content Installer";
+          genericName = "DAZ Content Installer";
+          comment = "Avalonia desktop installer for third-party DAZ content";
+          exec = "DazContentInstaller";
+          icon = "daz-content-installer";
+          startupWMClass = "DazContentInstaller";
+          terminal = false;
+          categories = [ "Utility" ];
+        };
       in
       {
         devShells.default = pkgs.mkShell {
@@ -122,11 +133,16 @@ EOF
 
           dotnet-sdk = pkgs.dotnetCorePackages.sdk_10_0;
           dotnet-runtime = pkgs.dotnetCorePackages.runtime_10_0;
-          nativeBuildInputs = [ pkgs.makeWrapper ];
+          nativeBuildInputs = [ pkgs.copyDesktopItems pkgs.makeWrapper ];
+          desktopItems = [ desktopItem ];
 
           selfContainedBuild = true;
           executables = [ "DazContentInstaller" ];
           runtimeDeps = runtimeLibs;
+          postInstall = ''
+            install -Dm644 "$NIX_BUILD_TOP/source/DazContentInstaller/Assets/icon.svg" \
+              "$out/share/icons/hicolor/scalable/apps/daz-content-installer.svg"
+          '';
           postFixup = ''
             wrapProgram "$out/bin/DazContentInstaller" ${lib.escapeShellArgs wrapperArgs}
           '';

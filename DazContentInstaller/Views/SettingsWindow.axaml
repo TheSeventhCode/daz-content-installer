@@ -7,7 +7,8 @@
         MinHeight="500" WindowStartupLocation="CenterOwner"
         x:Class="DazContentInstaller.Views.SettingsWindow"
         x:DataType="viewModels:SettingsWindowViewModel"
-        Title="Settings - DAZ Asset Manager" Loaded="Control_OnLoaded">
+        Title="Settings - DAZ Asset Manager" Loaded="Control_OnLoaded"
+        Icon="avares://DazContentInstaller/Assets/icon.png">
 
     <Design.DataContext>
         <!-- This only sets the DataContext for the previewer in an IDE,

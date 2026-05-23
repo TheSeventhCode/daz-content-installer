@@ -17,6 +17,11 @@ sealed class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            .With(new X11PlatformOptions
+            {
+                // Match the Linux desktop entry so taskbars can resolve the app icon.
+                WmClass = "DazContentInstaller"
+            })
             .WithInterFont()
             .LogToTrace()
             .UseReactiveUI();

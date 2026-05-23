@@ -55,4 +55,8 @@
   <ItemGroup Condition="'$(Configuration)' == 'Release'">
     <RuntimeHostConfigurationOption Include="System.Globalization.AppLocalIcu" Value="72.1.0.3" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Assets\" />
+  </ItemGroup>
 </Project>
