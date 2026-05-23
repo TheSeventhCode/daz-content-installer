@@ -61,7 +61,7 @@
           src = ./.;
           filter = path: type:
             let
-              baseName = builtins.baseNameOf path;
+              baseName = baseNameOf path;
             in
               !(
                 lib.elem baseName [
@@ -112,7 +112,7 @@ EOF
           shellHook = runtimeEnvironment;
         };
 
-        packages.daz-content-installer = pkgs.buildDotnetModule rec {
+        packages.daz-content-installer = pkgs.buildDotnetModule {
           pname = "daz-content-installer";
           version = "0.1.0";
           src = cleanSrc;
