@@ -3,7 +3,21 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DazContentInstaller", "DazContentInstaller\DazContentInstaller.csproj", "{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F764AC51-023C-4222-8B5D-0573A0507E36}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SolutionItems", "SolutionItems", "{C9ABEA7C-2E32-43F7-A91D-E3B5E8772699}"
+	ProjectSection(SolutionItems) = preProject
+		flake.lock = flake.lock
+		flake.nix = flake.nix
+		LICENSE = LICENSE
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DazContentInstaller", "src\DazContentInstaller\DazContentInstaller.csproj", "{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A9EEB86B-BA8F-483D-82A8-21C4C4899F5F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DazContentInstaller.Tests", "tests\DazContentInstaller.Tests\DazContentInstaller.Tests.csproj", "{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,20 +29,39 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Debug|x64.Build.0 = Debug|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Debug|x86.Build.0 = Debug|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Release|Any CPU.Build.0 = Release|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Release|x64.ActiveCfg = Release|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Release|x64.Build.0 = Release|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Release|x86.ActiveCfg = Release|Any CPU
-		{09AA1C73-3342-4A76-A756-E8CF34BA5EE6}.Release|x86.Build.0 = Release|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Debug|x64.Build.0 = Debug|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Debug|x86.Build.0 = Debug|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Release|x64.ActiveCfg = Release|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Release|x64.Build.0 = Release|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Release|x86.ActiveCfg = Release|Any CPU
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E}.Release|x86.Build.0 = Release|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Debug|x64.Build.0 = Debug|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Debug|x86.Build.0 = Debug|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Release|x64.ActiveCfg = Release|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Release|x64.Build.0 = Release|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Release|x86.ActiveCfg = Release|Any CPU
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{7135F63F-4D82-4AEE-A1CA-A3A276B5546E} = {F764AC51-023C-4222-8B5D-0573A0507E36}
+		{B2CE4BF3-D9CF-4846-9C08-6A2E74965C66} = {A9EEB86B-BA8F-483D-82A8-21C4C4899F5F}
+	EndGlobalSection
+	GlobalSection(RiderSharedRunConfigurations) = postSolution
+		File = src\DazContentInstaller\DazContentInstaller.run.xml
 	EndGlobalSection
 EndGlobal
