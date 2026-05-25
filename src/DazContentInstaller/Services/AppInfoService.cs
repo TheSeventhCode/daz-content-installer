@@ -1,3 +1,5 @@
+using System;
+
 namespace DazContentInstaller.Services;
 
 public interface IAppInfoService
@@ -6,14 +8,18 @@ public interface IAppInfoService
     bool IsDevelopmentEnvironment();
 }
 
-public class AppInfoService : IAppInfoService
+public class AppInfoService(
+    Func<string?>? getAppVersion = null,
+    Func<bool>? isDevelopmentEnvironment = null) : IAppInfoService
 {
-    public string? GetAppVersion()
-    {
-        return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString();
-    }
+    public string? GetAppVersion() =>
+        getAppVersion?.Invoke() ??
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString();
 
-    public bool IsDevelopmentEnvironment()
+    public bool IsDevelopmentEnvironment() =>
+        isDevelopmentEnvironment?.Invoke() ?? IsDevelopmentEnvironmentDefault();
+
+    private static bool IsDevelopmentEnvironmentDefault()
     {
 #if DEBUG
         return true;

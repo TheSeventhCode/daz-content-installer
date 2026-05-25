@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
@@ -13,11 +14,14 @@ public interface IFileDialogService
     Task<string?> OpenFolderAsync(string title, string? startPath = null);
 }
 
-public class FileDialogService : IFileDialogService
+public class FileDialogService(Func<IStorageProvider?>? storageProviderFactory = null) : IFileDialogService
 {
+    private readonly Func<IStorageProvider?> _storageProviderFactory =
+        storageProviderFactory ?? (() => GetDefaultStorageProvider());
+
     public async Task<IReadOnlyList<string>> OpenArchiveFilesAsync()
     {
-        var storageProvider = GetStorageProvider();
+        var storageProvider = _storageProviderFactory();
         if (storageProvider is null)
             return [];
 
@@ -44,7 +48,7 @@ public class FileDialogService : IFileDialogService
 
     public async Task<string?> OpenFolderAsync(string title, string? startPath = null)
     {
-        var storageProvider = GetStorageProvider();
+        var storageProvider = _storageProviderFactory();
         if (storageProvider is null)
             return null;
 
@@ -62,7 +66,7 @@ public class FileDialogService : IFileDialogService
         return folders.ElementAtOrDefault(0)?.Path.LocalPath;
     }
 
-    private static IStorageProvider? GetStorageProvider()
+    private static IStorageProvider? GetDefaultStorageProvider()
     {
         return (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow
             ?.StorageProvider;

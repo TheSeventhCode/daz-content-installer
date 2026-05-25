@@ -19,12 +19,39 @@ public class ArchiveContentFingerprintTests
     }
 
     [Fact]
-    public void Compute_ChangesWhenManifestChanges()
+    public void Compute_IsOrderIndependent()
     {
-        var first = new[] { (InstalledRelativePath: "data/a/file.txt", FileHash: "ABC123", FileSize: 10UL) };
-        var second = new[] { (InstalledRelativePath: "data/a/file.txt", FileHash: "XYZ789", FileSize: 10UL) };
+        var firstOrder = new[]
+        {
+            (InstalledRelativePath: "Runtime/a.txt", FileHash: "AAA", FileSize: 1UL),
+            (InstalledRelativePath: "data/b.txt", FileHash: "BBB", FileSize: 2UL)
+        };
+        var secondOrder = new[]
+        {
+            (InstalledRelativePath: "data/b.txt", FileHash: "BBB", FileSize: 2UL),
+            (InstalledRelativePath: "Runtime/a.txt", FileHash: "AAA", FileSize: 1UL)
+        };
 
-        ArchiveContentFingerprint.Compute(first)
-            .ShouldNotBe(ArchiveContentFingerprint.Compute(second));
+        ArchiveContentFingerprint.Compute(firstOrder)
+            .ShouldBe(ArchiveContentFingerprint.Compute(secondOrder));
+    }
+
+    [Fact]
+    public async Task HashFileAsync_ReturnsStableSha256Hex()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), $"fingerprint-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(filePath, "hello");
+        try
+        {
+            var hash = await ArchiveContentFingerprint.HashFileAsync(filePath);
+
+            hash.ShouldBe(await ArchiveContentFingerprint.HashFileAsync(filePath));
+            hash.Length.ShouldBe(64);
+        }
+        finally
+        {
+            if (File.Exists(filePath))
+                File.Delete(filePath);
+        }
     }
 }

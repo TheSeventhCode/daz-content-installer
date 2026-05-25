@@ -17,7 +17,8 @@ public class DazArchiveInstallerTests
         var archivePath = fixture.CreateArchive("content.zip", ("data/author/product/file.txt", "hello"));
         var installer = fixture.CreateInstaller();
 
-        var results = await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+        var results = await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)])
+            .ToListAsync();
 
         File.Exists(Path.Combine(fixture.LibraryPath, "data", "author", "product", "file.txt")).ShouldBeTrue();
         File.Exists(Path.Combine(fixture.BackupPath, "content.zip")).ShouldBeTrue();
@@ -25,7 +26,8 @@ public class DazArchiveInstallerTests
 
         var archive = await fixture.DbContext.Archives.Include(x => x.AssetFiles).SingleAsync();
         archive.Status.ShouldBe(ArchiveStatus.Installed);
-        archive.AssetFiles.Single().InstalledRelativePath.ShouldBe(Path.Combine("data", "author", "product", "file.txt"));
+        archive.AssetFiles.Single().InstalledRelativePath
+            .ShouldBe(Path.Combine("data", "author", "product", "file.txt"));
     }
 
     [Fact]
@@ -33,10 +35,12 @@ public class DazArchiveInstallerTests
     {
         await using var fixture = await InstallerFixture.CreateAsync();
         var nestedArchivePath = fixture.CreateArchive("inner.zip", ("Runtime/Textures/thing.jpg", "image"));
-        var outerArchivePath = fixture.CreateArchiveWithFiles("bundle.zip", [("IM0001-product.zip", nestedArchivePath)]);
+        var outerArchivePath =
+            fixture.CreateArchiveWithFiles("bundle.zip", [("IM0001-product.zip", nestedArchivePath)]);
         var installer = fixture.CreateInstaller();
 
-        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(outerArchivePath)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(outerArchivePath)])
+            .ToListAsync();
 
         File.Exists(Path.Combine(fixture.LibraryPath, "Runtime", "Textures", "thing.jpg")).ShouldBeTrue();
 
@@ -84,7 +88,8 @@ public class DazArchiveInstallerTests
 
         var archive = await fixture.DbContext.Archives.Include(x => x.AssetFiles).SingleAsync();
         archive.AssetFiles.Count.ShouldBe(1);
-        archive.AssetFiles.Single().InstalledRelativePath.ShouldBe(Path.Combine("data", "author", "product", "file.txt"));
+        archive.AssetFiles.Single().InstalledRelativePath
+            .ShouldBe(Path.Combine("data", "author", "product", "file.txt"));
     }
 
     [Fact]
@@ -104,10 +109,11 @@ public class DazArchiveInstallerTests
         archiveEntity = await fixture.DbContext.Archives.SingleAsync();
         archiveEntity.Status.ShouldBe(ArchiveStatus.Uninstalled);
 
-        await installer.ReinstallArchiveAsync(archiveEntity.Id, new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
-        {
-            ArchiveId = archiveEntity.Id
-        }).ToListAsync();
+        await installer.ReinstallArchiveAsync(archiveEntity.Id,
+            new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
+            {
+                ArchiveId = archiveEntity.Id
+            }).ToListAsync();
 
         File.Exists(Path.Combine(fixture.LibraryPath, "data", "author", "product", "file.txt")).ShouldBeTrue();
         fixture.DbContext.ChangeTracker.Clear();
@@ -132,10 +138,11 @@ public class DazArchiveInstallerTests
 
         await Should.ThrowAsync<InvalidOperationException>(async () =>
         {
-            await foreach (var _ in installer.ReinstallArchiveAsync(archiveEntity.Id, new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
-            {
-                ArchiveId = archiveEntity.Id
-            }))
+            await foreach (var _ in installer.ReinstallArchiveAsync(archiveEntity.Id,
+                               new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
+                               {
+                                   ArchiveId = archiveEntity.Id
+                               }))
             {
             }
         });
@@ -171,7 +178,8 @@ public class DazArchiveInstallerTests
         var renamedArchive = fixture.CreateArchive("renamed.zip", ("data/author/product/file.txt", "hello"));
         var installer = fixture.CreateInstaller();
 
-        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(originalArchive)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(originalArchive)])
+            .ToListAsync();
         var duplicateResults = await installer
             .InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(renamedArchive)]).ToListAsync();
 
@@ -192,7 +200,10 @@ public class DazArchiveInstallerTests
         var archive = await fixture.DbContext.Archives.Include(x => x.AssetFiles).SingleAsync();
         archive.ContentFingerprint.ShouldNotBeNullOrWhiteSpace();
         archive.ContentFingerprint.ShouldBe(
-            ArchiveContentFingerprint.Compute([(Path.Combine("data", "author", "product", "file.txt"), archive.AssetFiles.Single().FileHash, archive.AssetFiles.Single().FileSize)]));
+            ArchiveContentFingerprint.Compute([
+                (Path.Combine("data", "author", "product", "file.txt"), archive.AssetFiles.Single().FileHash,
+                    archive.AssetFiles.Single().FileSize)
+            ]));
     }
 
     [Fact]
@@ -208,7 +219,8 @@ public class DazArchiveInstallerTests
         ]);
         var installer = fixture.CreateInstaller();
 
-        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)])
+            .ToListAsync();
         var bundleResults = await installer
             .InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(bundleArchive)]).ToListAsync();
 
@@ -283,7 +295,8 @@ public class DazArchiveInstallerTests
         ]);
         var installer = fixture.CreateInstaller();
 
-        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)])
+            .ToListAsync();
         await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(bundleArchive)]).ToListAsync();
 
         var standaloneEntity = await fixture.DbContext.Archives.SingleAsync(x =>
@@ -313,7 +326,8 @@ public class DazArchiveInstallerTests
         var installer = fixture.CreateInstaller();
 
         await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(bundleArchive)]).ToListAsync();
-        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)])
+            .ToListAsync();
 
         var standaloneEntity = await fixture.DbContext.Archives.SingleAsync(x =>
             x.ArchiveName == "standalone.zip" && x.ParentArchiveId == null);
@@ -332,8 +346,10 @@ public class DazArchiveInstallerTests
         private readonly string _rootPath;
         private readonly DbContextOptions<ApplicationDbContext> _dbContextOptions;
 
-        private InstallerFixture(string rootPath, ApplicationDbContext dbContext, DbContextOptions<ApplicationDbContext> dbContextOptions,
-            IDbContextFactory<ApplicationDbContext> dbContextFactory, SettingsService settingsService, InstallerConfig config,
+        private InstallerFixture(string rootPath, ApplicationDbContext dbContext,
+            DbContextOptions<ApplicationDbContext> dbContextOptions,
+            IDbContextFactory<ApplicationDbContext> dbContextFactory, SettingsService settingsService,
+            InstallerConfig config,
             AssetLibrary assetLibrary)
         {
             _rootPath = rootPath;
@@ -390,7 +406,8 @@ public class DazArchiveInstallerTests
             dbContext.AssetLibraries.Add(assetLibrary);
             await dbContext.SaveChangesAsync();
 
-            return new InstallerFixture(rootPath, dbContext, options, dbContextFactory, settingsService, config, assetLibrary);
+            return new InstallerFixture(rootPath, dbContext, options, dbContextFactory, settingsService, config,
+                assetLibrary);
         }
 
         public IDazArchiveInstaller CreateInstaller(IDazArchiveScanner? archiveScanner = null)

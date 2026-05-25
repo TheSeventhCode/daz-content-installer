@@ -35,4 +35,44 @@ public class DazArchiveScannerTests
         result.Categories.ShouldContain("hair");
         result.AssetTypes.ShouldContain(AssetType.Hair);
     }
+
+    [Theory]
+    [InlineData("data/author/product/file.duf", "data", "author", "product", "file.duf", "")]
+    [InlineData("content/data/author/product/file.duf", "data", "author", "product", "file.duf", "content")]
+    public void TryGetInstalledRelativePath_DetectsContentRoot(string entryPath, string rootSegment,
+        string segment2, string segment3, string segment4, string expectedContentRoot)
+    {
+        var expectedInstalledPath = Path.Combine(rootSegment, segment2, segment3, segment4);
+
+        var found = DazArchiveScanner.TryGetInstalledRelativePath(entryPath, out var installedRelativePath,
+            out var contentRoot);
+
+        found.ShouldBeTrue();
+        installedRelativePath.ShouldBe(expectedInstalledPath);
+        contentRoot.ShouldBe(expectedContentRoot);
+    }
+
+    [Theory]
+    [InlineData("\\data\\file.txt", "data/file.txt")]
+    [InlineData("/Runtime/textures/a.jpg", "Runtime/textures/a.jpg")]
+    public void NormalizeArchivePath_NormalizesSeparatorsAndLeadingSlashes(string input, string expected)
+    {
+        DazArchiveScanner.NormalizeArchivePath(input).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("nested/inner.zip", true)]
+    [InlineData("nested/inner.txt", false)]
+    public void IsNestedArchive_DetectsSupportedExtensions(string path, bool expected)
+    {
+        DazArchiveScanner.IsNestedArchive(path).ShouldBe(expected);
+    }
+
+    [Theory]
+    [InlineData("data/author/Thumbs.db", true)]
+    [InlineData("data/author/product/file.duf", false)]
+    public void ShouldIgnoreArchiveEntry_IgnoresKnownFiles(string path, bool expected)
+    {
+        DazArchiveScanner.ShouldIgnoreArchiveEntry(path).ShouldBe(expected);
+    }
 }

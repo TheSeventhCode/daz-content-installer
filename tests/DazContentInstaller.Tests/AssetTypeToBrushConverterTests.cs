@@ -15,7 +15,8 @@ public class AssetTypeToBrushConverterTests
     [InlineData(AssetType.Lights, "#CA8A04")]
     public void Convert_returns_distinct_color_for_each_asset_type(AssetType assetType, string expectedHex)
     {
-        var brush = _converter.Convert(assetType, typeof(IBrush), null, System.Globalization.CultureInfo.InvariantCulture)
+        var brush = _converter
+            .Convert(assetType, typeof(IBrush), null, System.Globalization.CultureInfo.InvariantCulture)
             .ShouldBeOfType<SolidColorBrush>();
 
         brush.Color.ShouldBe(Color.Parse(expectedHex));
@@ -24,7 +25,8 @@ public class AssetTypeToBrushConverterTests
     [Fact]
     public void Convert_parses_asset_type_from_string()
     {
-        var brush = _converter.Convert("Morphs", typeof(IBrush), null, System.Globalization.CultureInfo.InvariantCulture)
+        var brush = _converter
+            .Convert("Morphs", typeof(IBrush), null, System.Globalization.CultureInfo.InvariantCulture)
             .ShouldBeOfType<SolidColorBrush>();
 
         brush.Color.ShouldBe(Color.Parse("#FB7185"));

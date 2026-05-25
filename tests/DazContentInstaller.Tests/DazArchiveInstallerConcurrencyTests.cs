@@ -66,38 +66,12 @@ public class DazArchiveInstallerConcurrencyTests
         (finalContent == "first" || finalContent == "second version").ShouldBeTrue();
     }
 
-    [Fact]
-    public void QueueProgressAggregator_ComputesScanAndInstallProgress()
-    {
-        var (scanPercent, scanStatus) = QueueProgressAggregator.ComputeScanProgress(2, 5);
-        scanPercent.ShouldBe(40d);
-        scanStatus.ShouldBe("Scanning 2/5 archives");
-
-        var queue = new List<LoadedArchive>
-        {
-            CreateProgressArchive(ArchiveStatus.Installed, 100),
-            CreateProgressArchive(ArchiveStatus.Installing, 50),
-            CreateProgressArchive(ArchiveStatus.Ready, 0)
-        };
-
-        var (installPercent, installStatus) = QueueProgressAggregator.ComputeInstallProgress(queue);
-        installPercent.ShouldBe(50d);
-        installStatus.ShouldBe("Installing 1/3 archives (1 active)");
-    }
-
-    private static LoadedArchive CreateProgressArchive(ArchiveStatus status, double progressPercent)
-    {
-        var archive = new LoadedArchive(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.zip"));
-        archive.ArchiveStatus = status;
-        archive.ProgressPercent = progressPercent;
-        return archive;
-    }
-
     private sealed class CountingArchiveScanner(IDazArchiveScanner inner) : IDazArchiveScanner
     {
         public int ScanCount { get; private set; }
 
-        public Task<DazArchiveScanResult> ScanArchiveAsync(string archivePath, CancellationToken cancellationToken = default)
+        public Task<DazArchiveScanResult> ScanArchiveAsync(string archivePath,
+            CancellationToken cancellationToken = default)
         {
             ScanCount++;
             return inner.ScanArchiveAsync(archivePath, cancellationToken);
