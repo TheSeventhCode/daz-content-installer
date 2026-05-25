@@ -75,3 +75,40 @@ public class FileSizeConverter : IValueConverter
         throw new NotSupportedException();
     }
 }
+
+public class FilterSegmentBackgroundConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not true)
+            return Brushes.Transparent;
+
+        return (parameter as string)?.ToLowerInvariant() switch
+        {
+            "all" => new SolidColorBrush(Color.Parse("#4F7CFF")),
+            "uninstalled" => new SolidColorBrush(Color.Parse("#7D8796")),
+            "failed" => new SolidColorBrush(Color.Parse("#D05C5C")),
+            _ => Brushes.Transparent
+        };
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public class FilterSegmentForegroundConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is true
+            ? Brushes.White
+            : new SolidColorBrush(Color.Parse("#A9B5C4"));
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}

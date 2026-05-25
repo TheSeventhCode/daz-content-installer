@@ -378,9 +378,7 @@ public class DazArchiveInstaller(
         archive.InstallableSizeBytes = scanResult.InstallableSize;
         archive.ContentRoot = scanResult.ContentRoot;
         archive.ApplyScanMetadata(scanResult);
-        archive.AssetTypes.Clear();
-        foreach (var assetType in scanResult.AssetTypes)
-            archive.AssetTypes.Add(assetType);
+        archive.ReplaceClassifications(scanResult);
         PublishArchiveProgress(archive, ArchiveStatus.Loading, "Scan complete", totalFiles: scanResult.InstallableFileCount,
             progressPercent: 0);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
@@ -915,7 +913,11 @@ public class DazArchiveInstaller(
 
     private static string SerializeCategories(IEnumerable<string> categories)
     {
-        return string.Join(", ", categories.OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
+        return string.Join(", ",
+            categories
+                .Select(DazArchiveScanner.NormalizeCategory)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase));
     }
 
     private static void RemoveEmptyDirectories(string? directory, string stopAtDirectory)

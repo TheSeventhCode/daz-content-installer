@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -135,12 +136,7 @@ public partial class LoadedArchive : ViewModelBase
         TotalFiles = scan.InstallableFileCount;
         InstallableSizeBytes = scan.InstallableSize;
         ContentRoot = scan.ContentRoot;
-        AssetTypes.Clear();
-        foreach (var assetType in scan.AssetTypes)
-            AssetTypes.Add(assetType);
-        Categories.Clear();
-        foreach (var category in scan.Categories)
-            Categories.Add(category);
+        ReplaceClassifications(scan);
         RefreshSubArchives(scan);
         OnPropertyChanged(nameof(ScanSummary));
         ArchiveStatus = TotalFiles == 0 ? ArchiveStatus.Error : ArchiveStatus.Ready;
@@ -195,6 +191,24 @@ public partial class LoadedArchive : ViewModelBase
         OnPropertyChanged(nameof(DisplayName));
         OnPropertyChanged(nameof(ContentRoot));
         OnPropertyChanged(nameof(HasSubArchives));
+    }
+
+    public void ReplaceClassifications(DazArchiveScanResult scan)
+    {
+        ReplaceClassifications(
+            ArchiveClassification.MergeAssetTypes(scan),
+            ArchiveClassification.MergeCategories(scan));
+    }
+
+    public void ReplaceClassifications(IReadOnlyList<AssetType> assetTypes, IReadOnlyList<string> categories)
+    {
+        AssetTypes.Clear();
+        foreach (var assetType in assetTypes)
+            AssetTypes.Add(assetType);
+
+        Categories.Clear();
+        foreach (var category in categories)
+            Categories.Add(category);
     }
 
     public void ApplyScanMetadata(DazArchiveScanResult scan)

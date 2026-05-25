@@ -199,6 +199,39 @@ public class DazArchiveInstallerTests
     }
 
     [Fact]
+    public async Task InstallArchivesAsync_DeduplicatesAssetTypesAfterQueueScanAndInstall()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var firstInner = fixture.CreateArchive("first-inner.zip",
+            ("environments/author/product/scene.duf", "scene"),
+            ("data/author/materials/product/surface.duf", "surface"),
+            ("runtime/textures/author/product/texture.jpg", "texture"));
+        var secondInner = fixture.CreateArchive("second-inner.zip",
+            ("environments/author/product/scene2.duf", "scene"),
+            ("data/author/materials/product/surface2.duf", "surface"),
+            ("runtime/textures/author/product/texture2.jpg", "texture"));
+        var outerArchivePath = fixture.CreateCompositeArchive("bundle.zip", [],
+            ("IM00054761-01_WinterblackSanctuaryFallenDS.zip", firstInner),
+            ("IM00054761-02_WinterblackSanctuaryFallenPs.zip", secondInner));
+        var scan = await scanner.ScanArchiveAsync(outerArchivePath);
+        var loaded = new LoadedArchive(outerArchivePath);
+        loaded.ApplyScan(scan);
+        loaded.AssetTypes.Count.ShouldBe(3);
+
+        var installer = fixture.CreateInstaller();
+        LoadedArchive? latest = null;
+        await foreach (var progress in installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [loaded]))
+            latest = progress;
+
+        latest.ShouldNotBeNull();
+        latest.AssetTypes.Count.ShouldBe(3);
+        latest.AssetTypes.ShouldBe([AssetType.Environment, AssetType.Materials, AssetType.Textures],
+            ignoreOrder: true);
+    }
+
+    [Fact]
     public async Task InstallArchivesAsync_InstallsContentFromNestedArchives()
     {
         await using var fixture = await InstallerFixture.CreateAsync();
@@ -634,6 +667,41 @@ public class DazArchiveInstallerTests
 
         await installer.UninstallArchiveAsync(standaloneEntity.Id);
         File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "shared.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task UninstallArchiveAsync_CleansUpFailedInstallAndAllowsReinstall()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var archivePath = fixture.CreateArchive("content.zip", ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var entity = await fixture.DbContext.Archives.SingleAsync();
+        entity.Status = ArchiveStatus.Loading;
+        entity.ErrorMessage = "Simulated install crash";
+        await fixture.DbContext.SaveChangesAsync();
+
+        var installedPath = Path.Combine(fixture.LibraryPath, "data", "author", "product", "file.txt");
+        File.Exists(installedPath).ShouldBeTrue();
+
+        await installer.UninstallArchiveAsync(entity.Id);
+
+        fixture.DbContext.ChangeTracker.Clear();
+        (await fixture.DbContext.Archives.SingleAsync()).Status.ShouldBe(ArchiveStatus.Uninstalled);
+        File.Exists(installedPath).ShouldBeFalse();
+
+        var queueItem = new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
+        {
+            ArchiveId = entity.Id,
+            ArchiveStatus = ArchiveStatus.Ready,
+            StatusText = "Ready to reinstall"
+        };
+        var results = await installer.ReinstallArchiveAsync(entity.Id, queueItem).ToListAsync();
+
+        results.Last().ArchiveStatus.ShouldBe(ArchiveStatus.Installed);
+        File.Exists(installedPath).ShouldBeTrue();
     }
 
     public sealed class InstallerFixture : IAsyncDisposable

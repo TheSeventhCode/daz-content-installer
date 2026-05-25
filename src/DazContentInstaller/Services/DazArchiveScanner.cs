@@ -216,7 +216,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
             nestedArchives.Add(nestedScan);
 
             foreach (var category in nestedScan.Categories)
-                categories.Add(category);
+                categories.Add(NormalizeCategory(category));
             foreach (var assetType in nestedScan.AssetTypes)
                 assetTypes.Add(assetType);
         }

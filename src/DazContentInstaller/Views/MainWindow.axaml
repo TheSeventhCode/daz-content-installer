@@ -16,6 +16,8 @@
         <conv:AssetTypeToBrushConverter x:Key="AssetTypeToBrushConverter" />
         <conv:CategoryToBrushConverter x:Key="CategoryToBrushConverter" />
         <conv:FileSizeConverter x:Key="FileSizeConverter" />
+        <conv:FilterSegmentBackgroundConverter x:Key="FilterSegmentBackgroundConverter" />
+        <conv:FilterSegmentForegroundConverter x:Key="FilterSegmentForegroundConverter" />
     </Window.Resources>
 
     <DockPanel Margin="16" LastChildFill="True">
@@ -190,7 +192,34 @@
 
             <Border Grid.Column="1" Classes="card" Margin="0,0,16,0">
                 <Grid RowDefinitions="Auto,12,Auto,8,*">
-                    <TextBlock Text="Installed Archives" Classes="sectionTitle" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Installed Archives" Classes="sectionTitle" />
+                        <Border Grid.Column="1"
+                                Background="{DynamicResource SurfaceAltBrush}"
+                                CornerRadius="8"
+                                Padding="2">
+                            <StackPanel Orientation="Horizontal" Spacing="2">
+                                <Button Content="All"
+                                        Classes="filterSegment"
+                                        Background="{Binding IsAllInstalledArchiveStatusFilterSelected, Converter={StaticResource FilterSegmentBackgroundConverter}, ConverterParameter=All}"
+                                        Foreground="{Binding IsAllInstalledArchiveStatusFilterSelected, Converter={StaticResource FilterSegmentForegroundConverter}}"
+                                        Command="{Binding SelectInstalledArchiveStatusFilterCommand}"
+                                        CommandParameter="{x:Static vm:InstalledArchiveStatusFilter.All}" />
+                                <Button Content="Uninstalled"
+                                        Classes="filterSegment"
+                                        Background="{Binding IsUninstalledInstalledArchiveStatusFilterSelected, Converter={StaticResource FilterSegmentBackgroundConverter}, ConverterParameter=Uninstalled}"
+                                        Foreground="{Binding IsUninstalledInstalledArchiveStatusFilterSelected, Converter={StaticResource FilterSegmentForegroundConverter}}"
+                                        Command="{Binding SelectInstalledArchiveStatusFilterCommand}"
+                                        CommandParameter="{x:Static vm:InstalledArchiveStatusFilter.Uninstalled}" />
+                                <Button Content="Failed"
+                                        Classes="filterSegment"
+                                        Background="{Binding IsFailedInstalledArchiveStatusFilterSelected, Converter={StaticResource FilterSegmentBackgroundConverter}, ConverterParameter=Failed}"
+                                        Foreground="{Binding IsFailedInstalledArchiveStatusFilterSelected, Converter={StaticResource FilterSegmentForegroundConverter}}"
+                                        Command="{Binding SelectInstalledArchiveStatusFilterCommand}"
+                                        CommandParameter="{x:Static vm:InstalledArchiveStatusFilter.Failed}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                     <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
                         <TextBox PlaceholderText="Search archives..."
                                  Text="{Binding InstalledArchiveSearchText}" />

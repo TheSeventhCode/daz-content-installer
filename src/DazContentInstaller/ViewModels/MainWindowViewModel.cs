@@ -43,6 +43,7 @@ public partial class MainWindowViewModel(
 
     private bool _selectionHandlersRegistered;
     private readonly ProgressUpdateThrottler _uiProgressThrottler = new(UiProgressUpdateInterval);
+    private CancellationTokenSource? _archiveDetailsLoadCts;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallQueueCommand))]
@@ -83,6 +84,22 @@ public partial class MainWindowViewModel(
     [ObservableProperty] public partial string InstalledArchiveSearchText { get; set; } = string.Empty;
 
     [ObservableProperty] public partial string SelectedCategoryFilter { get; set; } = AllCategoriesLabel;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAllInstalledArchiveStatusFilterSelected))]
+    [NotifyPropertyChangedFor(nameof(IsUninstalledInstalledArchiveStatusFilterSelected))]
+    [NotifyPropertyChangedFor(nameof(IsFailedInstalledArchiveStatusFilterSelected))]
+    public partial InstalledArchiveStatusFilter SelectedInstalledArchiveStatusFilter { get; set; } =
+        InstalledArchiveStatusFilter.All;
+
+    public bool IsAllInstalledArchiveStatusFilterSelected =>
+        SelectedInstalledArchiveStatusFilter == InstalledArchiveStatusFilter.All;
+
+    public bool IsUninstalledInstalledArchiveStatusFilterSelected =>
+        SelectedInstalledArchiveStatusFilter == InstalledArchiveStatusFilter.Uninstalled;
+
+    public bool IsFailedInstalledArchiveStatusFilterSelected =>
+        SelectedInstalledArchiveStatusFilter == InstalledArchiveStatusFilter.Failed;
 
     [ObservableProperty] public partial string QueueArchiveSearchText { get; set; } = string.Empty;
 
@@ -170,6 +187,9 @@ public partial class MainWindowViewModel(
     partial void OnInstalledArchiveSearchTextChanged(string value) => ApplyInstalledArchiveFilter();
 
     partial void OnSelectedCategoryFilterChanged(string value) => ApplyInstalledArchiveFilter();
+
+    partial void OnSelectedInstalledArchiveStatusFilterChanged(InstalledArchiveStatusFilter value) =>
+        ApplyInstalledArchiveFilter();
 
     partial void OnQueueArchiveSearchTextChanged(string value) => ApplyQueueArchiveFilter();
 
@@ -296,6 +316,12 @@ public partial class MainWindowViewModel(
         }
     }
 
+    [RelayCommand]
+    private void SelectInstalledArchiveStatusFilter(InstalledArchiveStatusFilter filter)
+    {
+        SelectedInstalledArchiveStatusFilter = filter;
+    }
+
     [RelayCommand(CanExecute = nameof(CanInstallQueue))]
     private async Task InstallQueueAsync()
     {
@@ -377,7 +403,7 @@ public partial class MainWindowViewModel(
     private async Task UninstallSelectedArchiveAsync()
     {
         var toUninstall = SelectedInstalledArchives
-            .Where(x => x.Status == ArchiveStatus.Installed)
+            .Where(IsUninstallEligible)
             .ToList();
         if (toUninstall.Count == 0)
             return;
@@ -402,8 +428,10 @@ public partial class MainWindowViewModel(
             await LoadSelectedArchiveDetailsAsync(SelectedInstalledArchive);
 
             StatusText = toUninstall.Count == 1
-                ? "Archive uninstalled"
-                : $"{toUninstall.Count} archives uninstalled";
+                ? toUninstall[0].Status == ArchiveStatus.Installed
+                    ? "Archive uninstalled"
+                    : "Failed install cleaned up"
+                : $"{toUninstall.Count} archives cleaned up";
             ProgressPercent = 100;
         }
         finally
@@ -534,7 +562,15 @@ public partial class MainWindowViewModel(
 
     private bool CanUninstallSelectedArchive()
     {
-        return !IsBusy && SelectedInstalledArchives.Any(x => x.Status == ArchiveStatus.Installed);
+        return !IsBusy && SelectedInstalledArchives.Any(IsUninstallEligible);
+    }
+
+    private static bool IsUninstallEligible(InstalledArchiveViewModel archive)
+    {
+        return archive.Status is ArchiveStatus.Installed
+            or ArchiveStatus.Error
+            or ArchiveStatus.Loading
+            or ArchiveStatus.Installing;
     }
 
     private bool CanReinstallSelectedArchive()
@@ -735,22 +771,62 @@ public partial class MainWindowViewModel(
 
     private async Task LoadSelectedArchiveDetailsAsync(InstalledArchiveViewModel? archive)
     {
+        _archiveDetailsLoadCts?.Cancel();
+        _archiveDetailsLoadCts?.Dispose();
+        var loadCts = new CancellationTokenSource();
+        _archiveDetailsLoadCts = loadCts;
+        var cancellationToken = loadCts.Token;
+        var selectedArchiveId = archive?.Id;
+
         SelectedArchiveFileGroups.Clear();
         FilteredSelectedArchiveFileGroups.Clear();
         OnPropertyChanged(nameof(ArchiveFileListSummary));
         if (archive is null)
             return;
 
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
-        var archiveIds = await GetArchiveTreeIdsAsync(dbContext, archive.Id);
+        IReadOnlyList<ArchiveFileGroupViewModel> builtGroups;
+        try
+        {
+            builtGroups = await BuildSelectedArchiveFileGroupsAsync(archive, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await UiThread.RunAsync(() =>
+        {
+            if (_archiveDetailsLoadCts != loadCts || SelectedInstalledArchive?.Id != selectedArchiveId)
+                return;
+
+            foreach (var group in builtGroups)
+                SelectedArchiveFileGroups.Add(group);
+
+            ApplyArchiveFileFilter();
+            OnPropertyChanged(nameof(ArchiveFileListSummary));
+        });
+    }
+
+    private async Task<IReadOnlyList<ArchiveFileGroupViewModel>> BuildSelectedArchiveFileGroupsAsync(
+        InstalledArchiveViewModel archive, CancellationToken cancellationToken)
+    {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
+            .ConfigureAwait(false);
+        var archiveIds = await GetArchiveTreeIdsAsync(dbContext, archive.Id, cancellationToken)
+            .ConfigureAwait(false);
         var archivesInTree = await dbContext.Archives
             .Where(x => archiveIds.Contains(x.Id))
-            .ToListAsync();
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
         var records = await dbContext.InstallRecords
             .Include(x => x.AssetFile)
             .Include(x => x.Archive)
             .Where(x => archiveIds.Contains(x.ArchiveId))
-            .ToListAsync();
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         var recordsByArchiveId = records
             .GroupBy(x => x.ArchiveId)
@@ -792,27 +868,14 @@ public partial class MainWindowViewModel(
                     IsOverridden = record.HasBeenOverriden,
                     InstalledAt = record.InstalledAt
                 });
-
-                if (group.Files.Count % CollectionUpdateBatchSize == 0)
-                    await Task.Yield();
             }
 
             groups.Add(group);
         }
 
-        var builtGroups = ArchiveFileGroupBuilder
+        return ArchiveFileGroupBuilder
             .Build(groups, archive.Id, archive.ArchiveName, archive.DisplayName)
             .ToList();
-
-        for (var index = 0; index < builtGroups.Count; index++)
-        {
-            SelectedArchiveFileGroups.Add(builtGroups[index]);
-            if (index % CollectionUpdateBatchSize == CollectionUpdateBatchSize - 1)
-                await Task.Yield();
-        }
-
-        ApplyArchiveFileFilter();
-        OnPropertyChanged(nameof(ArchiveFileListSummary));
     }
 
     private void RefreshAvailableCategoryFilters()
@@ -860,6 +923,13 @@ public partial class MainWindowViewModel(
                 x.Categories.Any(category =>
                     string.Equals(category, SelectedCategoryFilter, StringComparison.OrdinalIgnoreCase)));
         }
+
+        matches = SelectedInstalledArchiveStatusFilter switch
+        {
+            InstalledArchiveStatusFilter.Uninstalled => matches.Where(x => x.Status == ArchiveStatus.Uninstalled),
+            InstalledArchiveStatusFilter.Failed => matches.Where(x => x.Status == ArchiveStatus.Error),
+            _ => matches
+        };
 
         if (!string.IsNullOrWhiteSpace(query))
             matches = matches.Where(x => MatchesInstalledArchiveSearch(x, query));
@@ -950,7 +1020,8 @@ public partial class MainWindowViewModel(
                && value.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(ApplicationDbContext dbContext, Guid rootId)
+    private static async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(ApplicationDbContext dbContext, Guid rootId,
+        CancellationToken cancellationToken = default)
     {
         var queue = new Queue<Guid>();
         var visited = new HashSet<Guid>();
@@ -958,12 +1029,15 @@ public partial class MainWindowViewModel(
 
         while (queue.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var current = queue.Dequeue();
             if (!visited.Add(current))
                 continue;
 
             var children = await dbContext.Archives.Where(x => x.ParentArchiveId == current).Select(x => x.Id)
-                .ToListAsync();
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
             foreach (var child in children)
                 queue.Enqueue(child);
         }
@@ -993,12 +1067,7 @@ public partial class MainWindowViewModel(
             FileSizeBytes = archive.ArchiveSize
         };
 
-        foreach (var assetType in archive.AssetTypes)
-            loaded.AssetTypes.Add(assetType);
-
-        foreach (var category in archive.Categories)
-            loaded.Categories.Add(category);
-
+        loaded.ReplaceClassifications(archive.AssetTypes, archive.Categories);
         return loaded;
     }
 

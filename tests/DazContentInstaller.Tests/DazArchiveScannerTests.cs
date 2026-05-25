@@ -230,6 +230,62 @@ public class DazArchiveScannerTests
     }
 
     [Fact]
+    public async Task ScanArchiveAsync_DeduplicatesWhenOuterArchiveAlsoContainsDirectContent()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var firstInner = fixture.CreateArchive("first-inner.zip",
+            ("environments/author/product/scene.duf", "scene"),
+            ("data/author/materials/product/surface.duf", "surface"),
+            ("runtime/textures/author/product/texture.jpg", "texture"));
+        var secondInner = fixture.CreateArchive("second-inner.zip",
+            ("environments/author/product/scene2.duf", "scene"),
+            ("data/author/materials/product/surface2.duf", "surface"),
+            ("runtime/textures/author/product/texture2.jpg", "texture"));
+        var outerArchivePath = fixture.CreateCompositeArchive("bundle.zip",
+            [
+                ("environments/author/bundle/scene.duf", "scene"),
+                ("data/author/materials/bundle/surface.duf", "surface"),
+                ("runtime/textures/author/bundle/texture.jpg", "texture")
+            ],
+            ("IM00054761-01_WinterblackSanctuaryFallenDS.zip", firstInner),
+            ("IM00054761-02_WinterblackSanctuaryFallenPs.zip", secondInner));
+
+        var result = await scanner.ScanArchiveAsync(outerArchivePath);
+
+        result.AssetTypes.Count.ShouldBe(3);
+        result.Categories.Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task ScanArchiveAsync_DeduplicatesAssetTypesFromNestedArchivesWithSimilarContent()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var firstInner = fixture.CreateArchive("first-inner.zip",
+            ("environments/author/product/scene.duf", "scene"),
+            ("data/author/materials/product/surface.duf", "surface"),
+            ("runtime/textures/author/product/texture.jpg", "texture"));
+        var secondInner = fixture.CreateArchive("second-inner.zip",
+            ("environments/author/product/scene2.duf", "scene"),
+            ("data/author/materials/product/surface2.duf", "surface"),
+            ("runtime/textures/author/product/texture2.jpg", "texture"));
+        var outerArchivePath = fixture.CreateCompositeArchive("bundle.zip", [],
+            ("IM00054761-01_WinterblackSanctuaryFallenDS.zip", firstInner),
+            ("IM00054761-02_WinterblackSanctuaryFallenPs.zip", secondInner));
+
+        var result = await scanner.ScanArchiveAsync(outerArchivePath);
+
+        result.AssetTypes.Count.ShouldBe(3);
+        result.AssetTypes.ShouldBe([AssetType.Environment, AssetType.Materials, AssetType.Textures],
+            ignoreOrder: true);
+        result.Categories.Count.ShouldBe(3);
+        result.Categories.ShouldBe(["environments", "materials", "textures"], ignoreOrder: true);
+    }
+
+    [Fact]
     public async Task ScanArchiveAsync_KeepsOuterDisplayNameWhenParentHasSupplementDsx()
     {
         await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
