@@ -22,6 +22,12 @@ public partial class LoadedArchive : ViewModelBase
     [ObservableProperty]
     public partial ArchiveStatus ArchiveStatus { get; set; } = ArchiveStatus.Pending;
 
+    /// <summary>
+    /// Set only when a terminal install progress event is yielded. Unlike
+    /// <see cref="ArchiveStatus"/>, this is not retroactively changed on older queued progress events.
+    /// </summary>
+    public bool InstallCompleted { get; private set; }
+
     public string StatusBadgeText => ArchiveStatus switch
     {
         ArchiveStatus.Pending => "Queued",
@@ -145,6 +151,10 @@ public partial class LoadedArchive : ViewModelBase
         ProgressPercent = TotalFiles == 0 ? 0 : 100;
     }
 
+    public void ResetInstallCompletion() => InstallCompleted = false;
+
+    public void MarkInstallCompleted() => InstallCompleted = true;
+
     public void SetInstallProgressSilently(
         ArchiveStatus status,
         string? statusText,
@@ -157,6 +167,7 @@ public partial class LoadedArchive : ViewModelBase
         _suppressInstallProgressNotifications = true;
         try
         {
+            InstallCompleted = false;
             ArchiveStatus = status;
             StatusText = statusText;
             ErrorMessage = errorMessage;

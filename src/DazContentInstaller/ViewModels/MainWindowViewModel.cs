@@ -343,19 +343,16 @@ public partial class MainWindowViewModel(
                 return;
             }
 
-            var promotedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await foreach (var progress in archiveInstaller.InstallArchivesAsync(SelectedAssetLibrary.Id, installQueue))
             {
                 UpdateInstallProgressUi(installQueue, progress);
 
-                if (progress.ArchiveStatus == ArchiveStatus.Installed
-                    && promotedPaths.Add(progress.ArchivePath))
-                {
+                if (progress.InstallCompleted)
                     await PromoteInstalledArchiveAsync(progress);
-                }
             }
 
             UpdateInstallProgressUi(installQueue, force: true);
+            await RefreshInstalledArchivesAsync();
             InstallQueueCommand.NotifyCanExecuteChanged();
             SortQueueArchives();
             StatusText = "Install queue finished";
@@ -474,8 +471,6 @@ public partial class MainWindowViewModel(
 
         try
         {
-            var promotedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
             foreach (var archive in toReinstall)
             {
                 var queueItem = queueItems.First(x => x.ArchiveId == archive.Id);
@@ -484,15 +479,13 @@ public partial class MainWindowViewModel(
                 {
                     UpdateInstallProgressUi(queueItems, progress);
 
-                    if (progress.ArchiveStatus == ArchiveStatus.Installed
-                        && promotedPaths.Add(progress.ArchivePath))
-                    {
+                    if (progress.InstallCompleted)
                         await PromoteInstalledArchiveAsync(progress);
-                    }
                 }
             }
 
             UpdateInstallProgressUi(queueItems, force: true);
+            await RefreshInstalledArchivesAsync();
             await LoadSelectedArchiveDetailsAsync(SelectedInstalledArchive);
             SortQueueArchives();
             StatusText = queueItems.All(x => x.ArchiveStatus == ArchiveStatus.Installed)
@@ -618,6 +611,10 @@ public partial class MainWindowViewModel(
             .Include(x => x.AssetFiles)
             .ThenInclude(x => x.InstallRecord)
             .Where(x => x.ParentArchiveId == null &&
+                        x.Status != ArchiveStatus.Loading &&
+                        x.Status != ArchiveStatus.Installing &&
+                        x.Status != ArchiveStatus.Ready &&
+                        x.Status != ArchiveStatus.Pending &&
                         (SelectedAssetLibrary == null || x.AssetLibraryId == SelectedAssetLibrary.Id))
             .ToListAsync();
 
@@ -679,7 +676,7 @@ public partial class MainWindowViewModel(
             .ThenInclude(x => x.InstallRecord)
             .FirstOrDefaultAsync(x => x.Id == loadedArchive.ArchiveId && x.ParentArchiveId == null);
 
-        if (archive is null)
+        if (archive is null || archive.Status != ArchiveStatus.Installed)
             return;
 
         var viewModel = await CreateInstalledArchiveViewModelAsync(dbContext, archive);

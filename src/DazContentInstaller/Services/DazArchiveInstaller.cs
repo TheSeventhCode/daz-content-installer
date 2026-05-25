@@ -287,6 +287,7 @@ public class DazArchiveInstaller(
         long lastProgressYieldTicks = 0;
         var progressThrottler = new ProgressUpdateThrottler(InstallProgressYieldInterval);
 
+        archive.ResetInstallCompletion();
         PublishArchiveProgress(archive, ArchiveStatus.Loading, "Preparing archive", errorMessage: null,
             progressPercent: 0);
         if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
@@ -573,6 +574,7 @@ public class DazArchiveInstaller(
             processedFiles: installableEntries.Count, totalFiles: installableEntries.Count, progressPercent: 100);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        archive.MarkInstallCompleted();
         if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
             yield return archive;
     }
