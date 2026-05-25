@@ -34,6 +34,7 @@ namespace DazContentInstaller.Migrations
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     ArchiveName = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false),
                     ArchiveSize = table.Column<ulong>(type: "INTEGER", nullable: false),
+                    ContentFingerprint = table.Column<string>(type: "TEXT", maxLength: 1024, nullable: true),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     ContentRoot = table.Column<string>(type: "TEXT", maxLength: 4096, nullable: true),
                     AssetTypes = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false),
@@ -142,6 +143,11 @@ namespace DazContentInstaller.Migrations
                 name: "IX_Archives_AssetLibraryId_ArchiveName_ParentArchiveId",
                 table: "Archives",
                 columns: new[] { "AssetLibraryId", "ArchiveName", "ParentArchiveId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Archives_AssetLibraryId_ParentArchiveId_ContentFingerprint",
+                table: "Archives",
+                columns: new[] { "AssetLibraryId", "ParentArchiveId", "ContentFingerprint" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Archives_ParentArchiveId",

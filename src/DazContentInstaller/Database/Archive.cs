@@ -18,6 +18,12 @@ public class Archive
     /// Size of the zip file.
     /// </summary>
     public ulong ArchiveSize { get; set; }
+
+    /// <summary>
+    /// Deterministic hash of the normalized installable content manifest for this archive.
+    /// </summary>
+    [StringLength(1024)]
+    public string? ContentFingerprint { get; set; }
     
     // public string? CustomAssetsBasePath { get; set; }
     

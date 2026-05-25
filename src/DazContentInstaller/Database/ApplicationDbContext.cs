@@ -33,6 +33,9 @@ public class ApplicationDbContext : DbContext
             .HasIndex(x => new { x.AssetLibraryId, x.ArchiveName, x.ParentArchiveId });
 
         modelBuilder.Entity<Archive>()
+            .HasIndex(x => new { x.AssetLibraryId, x.ParentArchiveId, x.ContentFingerprint });
+
+        modelBuilder.Entity<Archive>()
             .HasMany(x => x.SubArchives)
             .WithOne(x => x.ParentArchive)
             .HasForeignKey(x => x.ParentArchiveId)

@@ -44,6 +44,10 @@ namespace DazContentInstaller.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ContentFingerprint")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ContentRoot")
                         .HasMaxLength(4096)
                         .HasColumnType("TEXT");
@@ -69,6 +73,8 @@ namespace DazContentInstaller.Migrations
                     b.HasIndex("ParentArchiveId");
 
                     b.HasIndex("AssetLibraryId", "ArchiveName", "ParentArchiveId");
+
+                    b.HasIndex("AssetLibraryId", "ParentArchiveId", "ContentFingerprint");
 
                     b.ToTable("Archives");
                 });

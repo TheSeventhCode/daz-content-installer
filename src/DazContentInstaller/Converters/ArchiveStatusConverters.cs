@@ -16,7 +16,8 @@ public class ArchiveStatusToBrushConverter : IValueConverter
             ArchiveStatus.Installed => new SolidColorBrush(Color.Parse("#4CAF50")),
             ArchiveStatus.Installing => new SolidColorBrush(Color.Parse("#4F7CFF")),
             ArchiveStatus.Loading => new SolidColorBrush(Color.Parse("#C48C2A")),
-            ArchiveStatus.Duplicate or ArchiveStatus.Uninstalled => new SolidColorBrush(Color.Parse("#7D8796")),
+            ArchiveStatus.Duplicate => new SolidColorBrush(Color.Parse("#8B5CF6")),
+            ArchiveStatus.Uninstalled => new SolidColorBrush(Color.Parse("#7D8796")),
             ArchiveStatus.Error => new SolidColorBrush(Color.Parse("#D05C5C")),
             _ => new SolidColorBrush(Color.Parse("#A9B5C4"))
         };

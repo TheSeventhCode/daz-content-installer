@@ -23,6 +23,20 @@ public sealed class DestinationPathLockRegistry
         }
     }
 
+    public async Task<T> ExecuteAsync<T>(string lockKey, Func<Task<T>> action, CancellationToken cancellationToken = default)
+    {
+        var semaphore = _locks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
+        await semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return await action();
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
+
     public static string CreateLockKey(Guid assetLibraryId, string installedRelativePath) =>
         $"{assetLibraryId:N}:{installedRelativePath}";
 }

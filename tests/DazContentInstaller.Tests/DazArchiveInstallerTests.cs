@@ -163,6 +163,170 @@ public class DazArchiveInstallerTests
         File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt")).ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task InstallArchivesAsync_MarksIdenticalContentWithDifferentNameAsDuplicate()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var originalArchive = fixture.CreateArchive("original.zip", ("data/author/product/file.txt", "hello"));
+        var renamedArchive = fixture.CreateArchive("renamed.zip", ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(originalArchive)]).ToListAsync();
+        var duplicateResults = await installer
+            .InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(renamedArchive)]).ToListAsync();
+
+        duplicateResults.Last().ArchiveStatus.ShouldBe(ArchiveStatus.Duplicate);
+        (await fixture.DbContext.Archives.CountAsync()).ShouldBe(1);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "author", "product", "file.txt")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_StoresContentFingerprintOnInstalledArchive()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var archivePath = fixture.CreateArchive("content.zip", ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var archive = await fixture.DbContext.Archives.Include(x => x.AssetFiles).SingleAsync();
+        archive.ContentFingerprint.ShouldNotBeNullOrWhiteSpace();
+        archive.ContentFingerprint.ShouldBe(
+            ArchiveContentFingerprint.Compute([(Path.Combine("data", "author", "product", "file.txt"), archive.AssetFiles.Single().FileHash, archive.AssetFiles.Single().FileSize)]));
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_InstallsBundleAfterStandaloneAndSkipsSharedFiles()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var standaloneArchive = fixture.CreateArchive("standalone.zip", ("data/shared/shared.txt", "shared"));
+        var extraArchive = fixture.CreateArchive("extra.zip", ("data/shared/extra.txt", "extra"));
+        var bundleArchive = fixture.CreateArchiveWithFiles("bundle.zip",
+        [
+            ("standalone.zip", standaloneArchive),
+            ("extra.zip", extraArchive)
+        ]);
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)]).ToListAsync();
+        var bundleResults = await installer
+            .InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(bundleArchive)]).ToListAsync();
+
+        bundleResults.Last().ArchiveStatus.ShouldBe(ArchiveStatus.Installed);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "shared.txt")).ShouldBeTrue();
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "extra.txt")).ShouldBeTrue();
+
+        var records = await fixture.DbContext.InstallRecords
+            .Include(x => x.AssetFile)
+            .Include(x => x.Archive)
+            .ToListAsync();
+
+        records.Count(x =>
+                x.Archive.ArchiveName == "standalone.zip" &&
+                x.InstallRecordStatus == InstallRecordStatus.Installed)
+            .ShouldBe(1);
+        records.Count(x =>
+                x.Archive.ArchiveName == "standalone.zip" &&
+                x.InstallRecordStatus == InstallRecordStatus.Skipped)
+            .ShouldBe(1);
+        records.Count(x =>
+                x.Archive.ArchiveName == "extra.zip" &&
+                x.InstallRecordStatus == InstallRecordStatus.Installed)
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_InstallsStandaloneAfterBundleAndSkipsSharedFiles()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var standaloneArchive = fixture.CreateArchive("standalone.zip", ("data/shared/shared.txt", "shared"));
+        var extraArchive = fixture.CreateArchive("extra.zip", ("data/shared/extra.txt", "extra"));
+        var bundleArchive = fixture.CreateArchiveWithFiles("bundle.zip",
+        [
+            ("standalone.zip", standaloneArchive),
+            ("extra.zip", extraArchive)
+        ]);
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(bundleArchive)]).ToListAsync();
+        var standaloneResults = await installer
+            .InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)]).ToListAsync();
+
+        standaloneResults.Last().ArchiveStatus.ShouldBe(ArchiveStatus.Installed);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "shared.txt")).ShouldBeTrue();
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "extra.txt")).ShouldBeTrue();
+
+        var records = await fixture.DbContext.InstallRecords
+            .Include(x => x.Archive)
+            .ToListAsync();
+
+        records.Count(x =>
+                x.Archive.ArchiveName == "standalone.zip" &&
+                x.InstallRecordStatus == InstallRecordStatus.Skipped)
+            .ShouldBe(1);
+        records.Count(x =>
+                x.Archive.ArchiveName == "standalone.zip" &&
+                x.InstallRecordStatus == InstallRecordStatus.Installed)
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task UninstallArchiveAsync_KeepsSharedFilesUntilLastOwnerRemoved_WhenStandaloneInstalledFirst()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var standaloneArchive = fixture.CreateArchive("standalone.zip", ("data/shared/shared.txt", "shared"));
+        var extraArchive = fixture.CreateArchive("extra.zip", ("data/shared/extra.txt", "extra"));
+        var bundleArchive = fixture.CreateArchiveWithFiles("bundle.zip",
+        [
+            ("standalone.zip", standaloneArchive),
+            ("extra.zip", extraArchive)
+        ]);
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(bundleArchive)]).ToListAsync();
+
+        var standaloneEntity = await fixture.DbContext.Archives.SingleAsync(x =>
+            x.ArchiveName == "standalone.zip" && x.ParentArchiveId == null);
+        var bundleEntity = await fixture.DbContext.Archives.SingleAsync(x => x.ArchiveName == "bundle.zip");
+
+        await installer.UninstallArchiveAsync(standaloneEntity.Id);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "shared.txt")).ShouldBeTrue();
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "extra.txt")).ShouldBeTrue();
+
+        await installer.UninstallArchiveAsync(bundleEntity.Id);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "shared.txt")).ShouldBeFalse();
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "extra.txt")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task UninstallArchiveAsync_KeepsSharedFilesUntilLastOwnerRemoved_WhenBundleInstalledFirst()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var standaloneArchive = fixture.CreateArchive("standalone.zip", ("data/shared/shared.txt", "shared"));
+        var extraArchive = fixture.CreateArchive("extra.zip", ("data/shared/extra.txt", "extra"));
+        var bundleArchive = fixture.CreateArchiveWithFiles("bundle.zip",
+        [
+            ("standalone.zip", standaloneArchive),
+            ("extra.zip", extraArchive)
+        ]);
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(bundleArchive)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(standaloneArchive)]).ToListAsync();
+
+        var standaloneEntity = await fixture.DbContext.Archives.SingleAsync(x =>
+            x.ArchiveName == "standalone.zip" && x.ParentArchiveId == null);
+        var bundleEntity = await fixture.DbContext.Archives.SingleAsync(x => x.ArchiveName == "bundle.zip");
+
+        await installer.UninstallArchiveAsync(bundleEntity.Id);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "shared.txt")).ShouldBeTrue();
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "extra.txt")).ShouldBeFalse();
+
+        await installer.UninstallArchiveAsync(standaloneEntity.Id);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "shared.txt")).ShouldBeFalse();
+    }
+
     public sealed class InstallerFixture : IAsyncDisposable
     {
         private readonly string _rootPath;
