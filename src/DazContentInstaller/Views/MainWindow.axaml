@@ -13,6 +13,7 @@
         CanMaximize="true">
     <Window.Resources>
         <conv:ArchiveStatusToBrushConverter x:Key="ArchiveStatusToBrushConverter" />
+        <conv:AssetTypeToBrushConverter x:Key="AssetTypeToBrushConverter" />
         <conv:FileSizeConverter x:Key="FileSizeConverter" />
     </Window.Resources>
 
@@ -21,7 +22,7 @@
             <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <Button Content="Add Archives" Command="{Binding AddArchivesCommand}" Classes="primary" />
-                    <Button Content="Install Queue" Command="{Binding InstallQueueCommand}" Classes="primary" />
+                    <Button Content="Install Queue" Command="{Binding InstallQueueCommand}" Classes="success" />
                     <Button Content="Refresh" Command="{Binding RefreshCommand}" Classes="secondary" />
                     <Button Content="Uninstall Selected" Command="{Binding UninstallSelectedArchiveCommand}" Classes="danger" />
                     <Button Content="Reinstall Selected" Command="{Binding ReinstallSelectedArchiveCommand}" Classes="primary" />
@@ -102,7 +103,7 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:CompileBindings="False">
-                                                    <Border Background="{DynamicResource AccentBrush}"
+                                                    <Border Background="{Binding ., Converter={StaticResource AssetTypeToBrushConverter}}"
                                                             CornerRadius="999"
                                                             Padding="8,2"
                                                             Margin="0,0,4,4">
@@ -173,7 +174,7 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate x:CompileBindings="False">
-                                                    <Border Background="{DynamicResource AccentBrush}"
+                                                    <Border Background="{Binding ., Converter={StaticResource AssetTypeToBrushConverter}}"
                                                             CornerRadius="999"
                                                             Padding="8,2"
                                                             Margin="0,0,4,4">
@@ -228,7 +229,7 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:CompileBindings="False">
-                                    <Border Background="{DynamicResource AccentBrush}"
+                                    <Border Background="{Binding ., Converter={StaticResource AssetTypeToBrushConverter}}"
                                             CornerRadius="999"
                                             Padding="8,2"
                                             Margin="0,0,4,4">

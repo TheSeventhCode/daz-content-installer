@@ -28,6 +28,19 @@ public class ArchiveStatusToBrushConverter : IValueConverter
     }
 }
 
+public class AssetTypeToBrushConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return ThemeBrushConverter.GetAssetTypeBrush(value);
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
 public class FileSizeConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)

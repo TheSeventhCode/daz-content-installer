@@ -14,6 +14,20 @@
                     <SolidColorBrush x:Key="ErrorBrush" Color="#D05C5C"/>
                     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F2F5F8"/>
                     <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A9B5C4"/>
+                    <SolidColorBrush x:Key="AssetTypeCharacterBrush" Color="#6366F1"/>
+                    <SolidColorBrush x:Key="AssetTypeAnatomyBrush" Color="#EC4899"/>
+                    <SolidColorBrush x:Key="AssetTypeClothingBrush" Color="#8B5CF6"/>
+                    <SolidColorBrush x:Key="AssetTypeHairBrush" Color="#D97706"/>
+                    <SolidColorBrush x:Key="AssetTypePropsBrush" Color="#14B8A6"/>
+                    <SolidColorBrush x:Key="AssetTypeEnvironmentBrush" Color="#22C55E"/>
+                    <SolidColorBrush x:Key="AssetTypePosesBrush" Color="#3B82F6"/>
+                    <SolidColorBrush x:Key="AssetTypeMaterialsBrush" Color="#A855F7"/>
+                    <SolidColorBrush x:Key="AssetTypeLightsBrush" Color="#CA8A04"/>
+                    <SolidColorBrush x:Key="AssetTypeCamerasBrush" Color="#06B6D4"/>
+                    <SolidColorBrush x:Key="AssetTypeScriptsBrush" Color="#64748B"/>
+                    <SolidColorBrush x:Key="AssetTypeTexturesBrush" Color="#E879F9"/>
+                    <SolidColorBrush x:Key="AssetTypeMorphsBrush" Color="#FB7185"/>
+                    <SolidColorBrush x:Key="AssetTypeUnknownBrush" Color="#7D8796"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
@@ -55,6 +69,11 @@
 
     <Style Selector="Button.danger">
         <Setter Property="Background" Value="{DynamicResource ErrorBrush}" />
+        <Setter Property="Foreground" Value="White" />
+    </Style>
+
+    <Style Selector="Button.success">
+        <Setter Property="Background" Value="{DynamicResource SuccessBrush}" />
         <Setter Property="Foreground" Value="White" />
     </Style>
 
