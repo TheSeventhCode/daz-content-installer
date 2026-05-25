@@ -15,6 +15,7 @@ public partial class LoadedArchive : ViewModelBase
     public string DisplayName { get; }
     public Guid? ArchiveId { get; set; }
     public ObservableCollection<AssetType> AssetTypes { get; } = [];
+    public ObservableCollection<string> Categories { get; } = [];
 
     [ObservableProperty]
     public partial ArchiveStatus ArchiveStatus { get; set; } = ArchiveStatus.Ready;
@@ -119,6 +120,9 @@ public partial class LoadedArchive : ViewModelBase
         AssetTypes.Clear();
         foreach (var assetType in scan.AssetTypes)
             AssetTypes.Add(assetType);
+        Categories.Clear();
+        foreach (var category in scan.Categories)
+            Categories.Add(category);
         ArchiveStatus = TotalFiles == 0 ? ArchiveStatus.Error : ArchiveStatus.Ready;
         ErrorMessage = TotalFiles == 0 ? "No DAZ content directories were found in this archive." : null;
         StatusText = TotalFiles == 0 ? ErrorMessage : "Scanned and ready to install";

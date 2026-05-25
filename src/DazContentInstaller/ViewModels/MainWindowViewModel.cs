@@ -25,9 +25,13 @@ public partial class MainWindowViewModel(
     IAssetLibraryStatisticsService assetLibraryStatisticsService)
     : ViewModelBase
 {
+    public const string AllCategoriesLabel = "All categories";
+
     public ObservableCollection<LoadedArchive> QueueArchives { get; } = [];
+    public ObservableCollection<LoadedArchive> FilteredQueueArchives { get; } = [];
     private ObservableCollection<InstalledArchiveViewModel> InstalledArchives { get; } = [];
     public ObservableCollection<InstalledArchiveViewModel> FilteredInstalledArchives { get; } = [];
+    public ObservableCollection<string> AvailableCategoryFilters { get; } = [AllCategoriesLabel];
     public ObservableCollection<InstalledArchiveViewModel> SelectedInstalledArchives { get; } = [];
     public ObservableCollection<LoadedArchive> SelectedQueueArchives { get; } = [];
     public ObservableCollection<AssetLibraryItemViewModel> AssetLibraries { get; } = [];
@@ -61,6 +65,10 @@ public partial class MainWindowViewModel(
     [ObservableProperty] public partial LoadedArchive? SelectedQueueArchive { get; set; }
 
     [ObservableProperty] public partial string InstalledArchiveSearchText { get; set; } = string.Empty;
+
+    [ObservableProperty] public partial string SelectedCategoryFilter { get; set; } = AllCategoriesLabel;
+
+    [ObservableProperty] public partial string QueueArchiveSearchText { get; set; } = string.Empty;
 
     [ObservableProperty] public partial string ArchiveFileSearchText { get; set; } = string.Empty;
 
@@ -136,6 +144,10 @@ public partial class MainWindowViewModel(
     }
 
     partial void OnInstalledArchiveSearchTextChanged(string value) => ApplyInstalledArchiveFilter();
+
+    partial void OnSelectedCategoryFilterChanged(string value) => ApplyInstalledArchiveFilter();
+
+    partial void OnQueueArchiveSearchTextChanged(string value) => ApplyQueueArchiveFilter();
 
     partial void OnArchiveFileSearchTextChanged(string value)
     {
@@ -323,6 +335,7 @@ public partial class MainWindowViewModel(
     private void ClearQueue()
     {
         QueueArchives.Clear();
+        ApplyQueueArchiveFilter();
         InstallQueueCommand.NotifyCanExecuteChanged();
         StatusText = "Queue cleared";
     }
@@ -554,6 +567,7 @@ public partial class MainWindowViewModel(
         SelectedInstalledArchive = SelectedInstalledArchives.FirstOrDefault()
                                    ?? InstalledArchives.FirstOrDefault();
 
+        RefreshAvailableCategoryFilters();
         ApplyInstalledArchiveFilter();
         await RefreshSelectedAssetLibrarySummaryAsync();
     }
@@ -598,7 +612,9 @@ public partial class MainWindowViewModel(
                 InstalledArchives.Add(viewModel);
 
             InstalledArchives.SortBy(x => x.ArchiveName);
+            RefreshAvailableCategoryFilters();
             ApplyInstalledArchiveFilter();
+            ApplyQueueArchiveFilter();
             InstallQueueCommand.NotifyCanExecuteChanged();
         });
 
@@ -691,18 +707,71 @@ public partial class MainWindowViewModel(
         OnPropertyChanged(nameof(ArchiveFileListSummary));
     }
 
+    private void RefreshAvailableCategoryFilters()
+    {
+        var previousSelection = SelectedCategoryFilter;
+        AvailableCategoryFilters.Clear();
+        AvailableCategoryFilters.Add(AllCategoriesLabel);
+
+        foreach (var category in InstalledArchives
+                     .SelectMany(x => x.Categories)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        {
+            AvailableCategoryFilters.Add(category);
+        }
+
+        SyncSelectedCategoryFilter(previousSelection);
+    }
+
+    private void SyncSelectedCategoryFilter(string? preferredSelection)
+    {
+        var selected = AvailableCategoryFilters.FirstOrDefault(x =>
+                           !string.IsNullOrEmpty(preferredSelection)
+                           && string.Equals(x, preferredSelection, StringComparison.OrdinalIgnoreCase))
+                       ?? AvailableCategoryFilters[0];
+
+        if (string.Equals(SelectedCategoryFilter, selected, StringComparison.Ordinal))
+            OnPropertyChanged(nameof(SelectedCategoryFilter));
+        else
+            SelectedCategoryFilter = selected;
+    }
+
     private void ApplyInstalledArchiveFilter()
     {
         FilteredInstalledArchives.Clear();
 
         var query = InstalledArchiveSearchText.Trim();
+        var hasCategoryFilter = !string.Equals(SelectedCategoryFilter, AllCategoriesLabel, StringComparison.Ordinal);
+
+        var matches = InstalledArchives.AsEnumerable();
+
+        if (hasCategoryFilter)
+        {
+            matches = matches.Where(x =>
+                x.Categories.Any(category =>
+                    string.Equals(category, SelectedCategoryFilter, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query))
+            matches = matches.Where(x => MatchesInstalledArchiveSearch(x, query));
+
+        foreach (var archive in matches.OrderBy(x => x.ArchiveName, StringComparer.OrdinalIgnoreCase))
+            FilteredInstalledArchives.Add(archive);
+    }
+
+    private void ApplyQueueArchiveFilter()
+    {
+        FilteredQueueArchives.Clear();
+
+        var query = QueueArchiveSearchText.Trim();
         var matches = (string.IsNullOrWhiteSpace(query)
-                ? InstalledArchives
-                : InstalledArchives.Where(x => MatchesInstalledArchiveSearch(x, query)))
-            .OrderBy(x => x.ArchiveName, StringComparer.OrdinalIgnoreCase);
+                ? QueueArchives
+                : QueueArchives.Where(x => MatchesQueueArchiveSearch(x, query)))
+            .OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase);
 
         foreach (var archive in matches)
-            FilteredInstalledArchives.Add(archive);
+            FilteredQueueArchives.Add(archive);
     }
 
     private void ApplyArchiveFileFilter()
@@ -726,6 +795,18 @@ public partial class MainWindowViewModel(
                || Contains(archive.BackupPath, query)
                || Contains(archive.ContentRoot, query)
                || Contains(archive.Status.ToString(), query)
+               || archive.Categories.Any(category => Contains(category, query))
+               || archive.AssetTypes.Any(assetType => Contains(assetType.ToString(), query));
+    }
+
+    private static bool MatchesQueueArchiveSearch(LoadedArchive archive, string query)
+    {
+        return Contains(archive.DisplayName, query)
+               || Contains(archive.ArchivePath, query)
+               || Contains(archive.StatusText, query)
+               || Contains(archive.ErrorMessage, query)
+               || Contains(archive.ContentRoot, query)
+               || Contains(archive.ArchiveStatus.ToString(), query)
                || archive.Categories.Any(category => Contains(category, query))
                || archive.AssetTypes.Any(assetType => Contains(assetType.ToString(), query));
     }
@@ -789,12 +870,17 @@ public partial class MainWindowViewModel(
         foreach (var assetType in archive.AssetTypes)
             loaded.AssetTypes.Add(assetType);
 
+        foreach (var category in archive.Categories)
+            loaded.Categories.Add(category);
+
         return loaded;
     }
 
     private static List<string> ParseCategories(string categories)
     {
         return categories.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(DazArchiveScanner.NormalizeCategory)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -804,5 +890,9 @@ public partial class MainWindowViewModel(
         queueArchives.SortBy(x => x.DisplayName);
     }
 
-    private void SortQueueArchives() => SortQueueArchives(QueueArchives);
+    private void SortQueueArchives()
+    {
+        SortQueueArchives(QueueArchives);
+        ApplyQueueArchiveFilter();
+    }
 }

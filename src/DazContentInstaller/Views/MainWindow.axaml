@@ -14,6 +14,7 @@
     <Window.Resources>
         <conv:ArchiveStatusToBrushConverter x:Key="ArchiveStatusToBrushConverter" />
         <conv:AssetTypeToBrushConverter x:Key="AssetTypeToBrushConverter" />
+        <conv:CategoryToBrushConverter x:Key="CategoryToBrushConverter" />
         <conv:FileSizeConverter x:Key="FileSizeConverter" />
     </Window.Resources>
 
@@ -38,7 +39,7 @@
                                Classes="caption"
                                VerticalAlignment="Center"
                                TextWrapping="Wrap"
-                               MaxWidth="480" />
+                               MaxWidth="580" />
                     <TextBlock Text="Target Library" VerticalAlignment="Center" Classes="caption" />
                     <ComboBox Width="260"
                               ItemsSource="{Binding AssetLibraries}"
@@ -67,10 +68,13 @@
 
         <Grid ColumnDefinitions="1.1*,1.2*,1.7*" RowDefinitions="*">
             <Border Grid.Column="0" Classes="card" Margin="0,0,16,0">
-                <Grid RowDefinitions="Auto,12,*,12,Auto">
+                <Grid RowDefinitions="Auto,12,Auto,8,*,12,Auto">
                     <TextBlock Text="Installation Queue" Classes="sectionTitle" />
-                    <ListBox Grid.Row="2"
-                             ItemsSource="{Binding QueueArchives}"
+                    <TextBox Grid.Row="2"
+                             PlaceholderText="Search queue..."
+                             Text="{Binding QueueArchiveSearchText}" />
+                    <ListBox Grid.Row="4"
+                             ItemsSource="{Binding FilteredQueueArchives}"
                              SelectedItem="{Binding SelectedQueueArchive}"
                              SelectedItems="{Binding SelectedQueueArchives, x:CompileBindings=False}"
                              SelectionMode="Multiple">
@@ -121,7 +125,7 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
+                    <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="8">
                         <Button Content="Remove Selected"
                                 Command="{Binding RemoveQueuedArchivesCommand}"
                                 Classes="secondary" />
@@ -135,9 +139,28 @@
             <Border Grid.Column="1" Classes="card" Margin="0,0,16,0">
                 <Grid RowDefinitions="Auto,12,Auto,8,*">
                     <TextBlock Text="Installed Archives" Classes="sectionTitle" />
-                    <TextBox Grid.Row="2"
-                             PlaceholderText="Search archives..."
-                             Text="{Binding InstalledArchiveSearchText}" />
+                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+                        <TextBox PlaceholderText="Search archives..."
+                                 Text="{Binding InstalledArchiveSearchText}" />
+                        <ComboBox Grid.Column="1"
+                                  Margin="8,0,0,0"
+                                  MinWidth="180"
+                                  ItemsSource="{Binding AvailableCategoryFilters}"
+                                  SelectedItem="{Binding SelectedCategoryFilter}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{Binding ., Converter={StaticResource CategoryToBrushConverter}}"
+                                            CornerRadius="999"
+                                            Padding="8,4">
+                                        <TextBlock Text="{Binding .}"
+                                                   FontSize="11"
+                                                   Foreground="White"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </Grid>
                     <ListBox Grid.Row="4"
                              ItemsSource="{Binding FilteredInstalledArchives}"
                              SelectedItem="{Binding SelectedInstalledArchive}"

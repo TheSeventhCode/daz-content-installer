@@ -31,7 +31,8 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         "lights",
         "light presets",
         "documentation",
-        "templates"
+        "templates",
+        "aniBlocks"
     };
 
     private static readonly HashSet<string> NestedArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -51,7 +52,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         "Thumbs.db"
     };
 
-    private static readonly Dictionary<string, AssetType> FolderToAssetType = new(StringComparer.OrdinalIgnoreCase)
+    public static readonly Dictionary<string, AssetType> FolderToAssetType = new(StringComparer.OrdinalIgnoreCase)
     {
         ["characters"] = AssetType.Character,
         ["anatomy"] = AssetType.Anatomy,
@@ -64,7 +65,8 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         ["scenes"] = AssetType.Environment,
         ["poses"] = AssetType.Poses,
         ["expressions"] = AssetType.Poses,
-        ["animations"] = AssetType.Poses,
+        ["animations"] = AssetType.Animations,
+        ["aniBlocks"] = AssetType.Animations,
         ["materials"] = AssetType.Materials,
         ["shaders"] = AssetType.Materials,
         ["morphs"] = AssetType.Morphs,
@@ -74,6 +76,22 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         ["scripts"] = AssetType.Scripts,
         ["textures"] = AssetType.Textures
     };
+
+    private static readonly Dictionary<string, string> FolderToCanonicalCategory = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["wardrobe"] = "clothing",
+        ["vehicles"] = "props",
+        ["scenes"] = "environments",
+        ["expressions"] = "poses",
+        ["aniBlocks"] = "animations",
+        ["shaders"] = "materials",
+        ["light presets"] = "lights"
+    };
+
+    public static string NormalizeCategory(string category)
+    {
+        return FolderToCanonicalCategory.TryGetValue(category, out var canonical) ? canonical : category;
+    }
 
     public async Task<DazArchiveScanResult> ScanArchiveAsync(string archivePath,
         CancellationToken cancellationToken = default)
@@ -210,7 +228,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
                 if (!string.Equals(part, folder, StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                categories.Add(folder);
+                categories.Add(NormalizeCategory(folder));
                 assetTypes.Add(assetType);
                 break;
             }

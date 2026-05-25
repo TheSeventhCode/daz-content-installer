@@ -21,6 +21,7 @@
                     <SolidColorBrush x:Key="AssetTypePropsBrush" Color="#14B8A6"/>
                     <SolidColorBrush x:Key="AssetTypeEnvironmentBrush" Color="#22C55E"/>
                     <SolidColorBrush x:Key="AssetTypePosesBrush" Color="#3B82F6"/>
+                    <SolidColorBrush x:Key="AssetTypeAnimationsBrush" Color="#F97316"/>
                     <SolidColorBrush x:Key="AssetTypeMaterialsBrush" Color="#A855F7"/>
                     <SolidColorBrush x:Key="AssetTypeLightsBrush" Color="#CA8A04"/>
                     <SolidColorBrush x:Key="AssetTypeCamerasBrush" Color="#06B6D4"/>

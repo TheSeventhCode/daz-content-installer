@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using DazContentInstaller.Database;
+using DazContentInstaller.Services;
 
 namespace DazContentInstaller.Converters;
 
@@ -36,6 +37,7 @@ internal static class ThemeBrushConverter
             AssetType.Props => ("AssetTypePropsBrush", "#14B8A6"),
             AssetType.Environment => ("AssetTypeEnvironmentBrush", "#22C55E"),
             AssetType.Poses => ("AssetTypePosesBrush", "#3B82F6"),
+            AssetType.Animations => ("AssetTypeAnimationsBrush", "#F97316"),
             AssetType.Materials => ("AssetTypeMaterialsBrush", "#A855F7"),
             AssetType.Lights => ("AssetTypeLightsBrush", "#CA8A04"),
             AssetType.Cameras => ("AssetTypeCamerasBrush", "#06B6D4"),
@@ -46,5 +48,16 @@ internal static class ThemeBrushConverter
         };
 
         return GetBrush(resourceKey, fallbackHex);
+    }
+
+    public static IBrush GetCategoryBrush(object? value)
+    {
+        if (value is not string category || string.IsNullOrWhiteSpace(category))
+            return GetAssetTypeBrush(AssetType.Unknown);
+
+        if (DazArchiveScanner.FolderToAssetType.TryGetValue(category, out var assetType))
+            return GetAssetTypeBrush(assetType);
+
+        return GetAssetTypeBrush(AssetType.Unknown);
     }
 }

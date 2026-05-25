@@ -10,6 +10,7 @@ public enum AssetType
     Props,
     Environment,
     Poses,
+    Animations,
     Materials,
     Lights,
     Cameras,

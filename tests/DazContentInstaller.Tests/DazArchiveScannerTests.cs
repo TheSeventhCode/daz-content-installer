@@ -36,9 +36,52 @@ public class DazArchiveScannerTests
         result.AssetTypes.ShouldContain(AssetType.Hair);
     }
 
+    [Fact]
+    public async Task ScanArchiveAsync_ClassifiesAnimationsFolder()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var archivePath = fixture.CreateArchive("animations.zip",
+            ("data/author/animations/walk/file.duf", "content"));
+
+        var result = await scanner.ScanArchiveAsync(archivePath);
+
+        result.Categories.ShouldContain("animations");
+        result.AssetTypes.ShouldContain(AssetType.Animations);
+        result.AssetTypes.ShouldNotContain(AssetType.Poses);
+    }
+
+    [Fact]
+    public async Task ScanArchiveAsync_ClassifiesAniBlocksRoot()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var archivePath = fixture.CreateArchive("aniblocks.zip",
+            ("aniBlocks/author/product/file.duf", "content"));
+
+        var result = await scanner.ScanArchiveAsync(archivePath);
+
+        result.Categories.ShouldContain("animations");
+        result.Categories.ShouldNotContain("aniBlocks");
+        result.AssetTypes.ShouldContain(AssetType.Animations);
+        result.AssetTypes.ShouldNotContain(AssetType.Poses);
+    }
+
+    [Theory]
+    [InlineData("aniBlocks", "animations")]
+    [InlineData("wardrobe", "clothing")]
+    [InlineData("hair", "hair")]
+    public void NormalizeCategory_maps_aliases_to_canonical_name(string category, string expected)
+    {
+        DazArchiveScanner.NormalizeCategory(category).ShouldBe(expected);
+    }
+
     [Theory]
     [InlineData("data/author/product/file.duf", "data", "author", "product", "file.duf", "")]
     [InlineData("content/data/author/product/file.duf", "data", "author", "product", "file.duf", "content")]
+    [InlineData("aniBlocks/author/product/file.duf", "aniBlocks", "author", "product", "file.duf", "")]
     public void TryGetInstalledRelativePath_DetectsContentRoot(string entryPath, string rootSegment,
         string segment2, string segment3, string segment4, string expectedContentRoot)
     {
