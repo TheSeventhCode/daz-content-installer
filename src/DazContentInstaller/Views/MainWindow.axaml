@@ -175,7 +175,10 @@
                                     <StackPanel Spacing="6">
                                         <Grid ColumnDefinitions="*,Auto">
                                             <StackPanel>
-                                                <TextBlock Text="{Binding ArchiveName}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding EffectiveDisplayName}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding ArchiveName}"
+                                                           Classes="caption"
+                                                           IsVisible="{Binding HasDistinctDisplayName}" />
                                                 <TextBlock Text="{Binding AssetLibraryName}" Classes="caption" />
                                             </StackPanel>
                                             <Border Grid.Column="1"
@@ -220,29 +223,35 @@
                 <Grid RowDefinitions="Auto,12,Auto,12,*">
                     <TextBlock Text="Archive Details" Classes="sectionTitle" />
 
-                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
                         <TextBlock Text="Archive" Classes="caption" />
-                        <TextBlock Grid.Column="1" Text="{Binding SelectedInstalledArchive.ArchiveName}" />
+                        <TextBlock Grid.Column="1" Text="{Binding SelectedInstalledArchive.EffectiveDisplayName}" />
 
-                        <TextBlock Grid.Row="1" Text="Library" Classes="caption" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedInstalledArchive.AssetLibraryName}" />
+                        <TextBlock Grid.Row="1" Text="File" Classes="caption" />
+                        <TextBlock Grid.Row="1"
+                                   Grid.Column="1"
+                                   Text="{Binding SelectedInstalledArchive.ArchiveName}"
+                                   IsVisible="{Binding SelectedInstalledArchive.HasDistinctDisplayName}" />
 
-                        <TextBlock Grid.Row="2" Text="Backup" Classes="caption" />
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedInstalledArchive.BackupPath}" TextWrapping="Wrap" />
+                        <TextBlock Grid.Row="2" Text="Library" Classes="caption" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedInstalledArchive.AssetLibraryName}" />
 
-                        <TextBlock Grid.Row="3" Text="Installed" Classes="caption" />
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedInstalledArchive.InstalledAt}" />
+                        <TextBlock Grid.Row="3" Text="Backup" Classes="caption" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedInstalledArchive.BackupPath}" TextWrapping="Wrap" />
 
-                        <TextBlock Grid.Row="4" Text="Content Root" Classes="caption" />
-                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedInstalledArchive.ContentRoot}" />
+                        <TextBlock Grid.Row="4" Text="Installed" Classes="caption" />
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedInstalledArchive.InstalledAt}" />
 
-                        <TextBlock Grid.Row="5" Text="Counts" Classes="caption" />
-                        <TextBlock Grid.Row="5"
+                        <TextBlock Grid.Row="5" Text="Content Root" Classes="caption" />
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedInstalledArchive.ContentRoot}" />
+
+                        <TextBlock Grid.Row="6" Text="Counts" Classes="caption" />
+                        <TextBlock Grid.Row="6"
                                    Grid.Column="1"
                                    Text="{Binding SelectedInstalledArchive.FileCount, StringFormat='Files: {0}'}"/>
 
-                        <TextBlock Grid.Row="6" Text="Types" Classes="caption" />
-                        <ItemsControl Grid.Row="6"
+                        <TextBlock Grid.Row="7" Text="Types" Classes="caption" />
+                        <ItemsControl Grid.Row="7"
                                       Grid.Column="1"
                                       ItemsSource="{Binding SelectedInstalledArchive.AssetTypes}">
                             <ItemsControl.ItemsPanel>

@@ -363,7 +363,7 @@ public partial class MainWindowViewModel(
         {
             foreach (var archive in toUninstall)
             {
-                StatusText = $"Uninstalling {archive.ArchiveName}";
+                StatusText = $"Uninstalling {archive.EffectiveDisplayName}";
                 await archiveInstaller.UninstallArchiveAsync(archive.Id);
             }
 
@@ -464,7 +464,7 @@ public partial class MainWindowViewModel(
         {
             foreach (var archive in toForget)
             {
-                StatusText = $"Removing database records for {archive.ArchiveName}";
+                StatusText = $"Removing database records for {archive.EffectiveDisplayName}";
                 await archiveInstaller.ForgetArchiveAsync(archive.Id);
             }
 
@@ -555,7 +555,7 @@ public partial class MainWindowViewModel(
                         (SelectedAssetLibrary == null || x.AssetLibraryId == SelectedAssetLibrary.Id))
             .ToListAsync();
 
-        foreach (var archive in topLevelArchives.OrderBy(x => x.ArchiveName, StringComparer.OrdinalIgnoreCase))
+        foreach (var archive in topLevelArchives.OrderBy(x => ArchiveDisplayName.GetEffectiveDisplayName(x.ArchiveName, x.DisplayName), StringComparer.OrdinalIgnoreCase))
         {
             var viewModel = await CreateInstalledArchiveViewModelAsync(dbContext, archive);
             InstalledArchives.Add(viewModel);
@@ -611,7 +611,7 @@ public partial class MainWindowViewModel(
             else
                 InstalledArchives.Add(viewModel);
 
-            InstalledArchives.SortBy(x => x.ArchiveName);
+            InstalledArchives.SortBy(x => x.EffectiveDisplayName);
             RefreshAvailableCategoryFilters();
             ApplyInstalledArchiveFilter();
             ApplyQueueArchiveFilter();
@@ -633,6 +633,7 @@ public partial class MainWindowViewModel(
         {
             Id = archive.Id,
             ArchiveName = archive.ArchiveName,
+            DisplayName = archive.DisplayName,
             AssetLibraryName = archive.AssetLibrary.Name,
             ContentRoot = archive.ContentRoot,
             BackupPath = GetDerivedBackupPath(archive.AssetLibrary, archive.ArchiveName),
@@ -756,7 +757,7 @@ public partial class MainWindowViewModel(
         if (!string.IsNullOrWhiteSpace(query))
             matches = matches.Where(x => MatchesInstalledArchiveSearch(x, query));
 
-        foreach (var archive in matches.OrderBy(x => x.ArchiveName, StringComparer.OrdinalIgnoreCase))
+        foreach (var archive in matches.OrderBy(x => x.EffectiveDisplayName, StringComparer.OrdinalIgnoreCase))
             FilteredInstalledArchives.Add(archive);
     }
 
@@ -790,7 +791,9 @@ public partial class MainWindowViewModel(
 
     private static bool MatchesInstalledArchiveSearch(InstalledArchiveViewModel archive, string query)
     {
-        return Contains(archive.ArchiveName, query)
+        return Contains(archive.EffectiveDisplayName, query)
+               || Contains(archive.ArchiveName, query)
+               || Contains(archive.DisplayName, query)
                || Contains(archive.AssetLibraryName, query)
                || Contains(archive.BackupPath, query)
                || Contains(archive.ContentRoot, query)

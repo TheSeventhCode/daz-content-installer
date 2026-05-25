@@ -31,6 +31,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         "lights",
         "light presets",
         "documentation",
+        "readme",
         "templates",
         "aniBlocks"
     };
@@ -85,7 +86,8 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         ["expressions"] = "poses",
         ["aniBlocks"] = "animations",
         ["shaders"] = "materials",
-        ["light presets"] = "lights"
+        ["light presets"] = "lights",
+        ["readme"] = "documentation"
     };
 
     private static readonly Dictionary<string, string> CanonicalSegmentNames = new(StringComparer.OrdinalIgnoreCase)
@@ -103,6 +105,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         ["lights"] = "Lights",
         ["light presets"] = "Light Presets",
         ["documentation"] = "Documentation",
+        ["readme"] = "Documentation",
         ["templates"] = "Templates",
         ["aniBlocks"] = "aniBlocks",
         ["characters"] = "Characters",
@@ -154,6 +157,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         var categories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var assetTypes = new HashSet<AssetType>();
         string? contentRoot = null;
+        string? displayName = null;
 
         foreach (var entry in sourceArchive.Entries.Where(x => !x.IsDirectory))
         {
@@ -165,6 +169,14 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
 
             if (ShouldIgnoreArchiveEntry(normalizedEntryPath))
                 continue;
+
+            if (displayName is null && DazProductMetadataReader.IsSupplementDsx(normalizedEntryPath))
+            {
+                await using var supplementStream = await entry.OpenEntryStreamAsync(cancellationToken);
+                using var reader = new StreamReader(supplementStream);
+                displayName = DazProductMetadataReader.TryReadProductName(await reader.ReadToEndAsync(cancellationToken));
+                continue;
+            }
 
             if (TryGetInstalledRelativePath(normalizedEntryPath, out var installedRelativePath, out var detectedRoot))
             {
@@ -207,6 +219,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         {
             ArchiveName = archiveName,
             ArchivePath = archivePath,
+            DisplayName = displayName,
             ArchiveSize = archiveSize,
             ContentRoot = contentRoot,
             AssetTypes = assetTypes.OrderBy(x => x).ToList(),

@@ -15,6 +15,12 @@ public class Archive
     public string ArchiveName { get; set; } = null!;
 
     /// <summary>
+    /// Human-facing product name from Supplement.dsx metadata, when available.
+    /// </summary>
+    [StringLength(512)]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
     /// Size of the zip file.
     /// </summary>
     public ulong ArchiveSize { get; set; }

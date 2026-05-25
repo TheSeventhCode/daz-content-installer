@@ -9,6 +9,9 @@ public partial class InstalledArchiveViewModel : ViewModelBase
 {
     public Guid Id { get; init; }
     public string ArchiveName { get; init; } = string.Empty;
+    public string? DisplayName { get; init; }
+    public string EffectiveDisplayName => ArchiveDisplayName.GetEffectiveDisplayName(ArchiveName, DisplayName);
+    public bool HasDistinctDisplayName => ArchiveDisplayName.HasDistinctDisplayName(ArchiveName, DisplayName);
     public string AssetLibraryName { get; init; } = string.Empty;
     public string? ContentRoot { get; init; }
     public string BackupPath { get; init; } = string.Empty;

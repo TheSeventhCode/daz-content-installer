@@ -8,6 +8,7 @@ public sealed class DazArchiveScanResult
 {
     public required string ArchiveName { get; init; }
     public required string ArchivePath { get; init; }
+    public string? DisplayName { get; init; }
     public ulong ArchiveSize { get; init; }
     public string? ContentRoot { get; init; }
     public IReadOnlyList<AssetType> AssetTypes { get; init; } = [];

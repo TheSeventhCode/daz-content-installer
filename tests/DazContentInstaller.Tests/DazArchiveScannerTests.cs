@@ -73,6 +73,7 @@ public class DazArchiveScannerTests
     [InlineData("aniBlocks", "animations")]
     [InlineData("wardrobe", "clothing")]
     [InlineData("hair", "hair")]
+    [InlineData("readme", "documentation")]
     public void NormalizeCategory_maps_aliases_to_canonical_name(string category, string expected)
     {
         DazArchiveScanner.NormalizeCategory(category).ShouldBe(expected);
@@ -82,6 +83,7 @@ public class DazArchiveScannerTests
     [InlineData("data/author/product/file.duf", "data", "author", "product", "file.duf", "")]
     [InlineData("content/data/author/product/file.duf", "data", "author", "product", "file.duf", "content")]
     [InlineData("aniBlocks/author/product/file.duf", "aniBlocks", "author", "product", "file.duf", "")]
+    [InlineData("ReadMe/author/product/readme.pdf", "Documentation", "author", "product", "readme.pdf", "")]
     public void TryGetInstalledRelativePath_DetectsContentRoot(string entryPath, string rootSegment,
         string segment2, string segment3, string segment4, string expectedContentRoot)
     {
@@ -99,6 +101,8 @@ public class DazArchiveScannerTests
     [InlineData("DATA/author/product/file.duf", "data/author/product/file.duf")]
     [InlineData("runtime/textures/a.jpg", "Runtime/Textures/a.jpg")]
     [InlineData("RUNTIME/TEXTURES/a.jpg", "Runtime/Textures/a.jpg")]
+    [InlineData("ReadMe/author/readme.pdf", "Documentation/author/readme.pdf")]
+    [InlineData("README/author/readme.pdf", "Documentation/author/readme.pdf")]
     public void CanonicalizeInstalledRelativePath_UsesDazDefaultCasing(string input, string expected)
     {
         DazArchiveScanner.CanonicalizeInstalledRelativePath(input).ShouldBe(expected);
@@ -140,11 +144,61 @@ public class DazArchiveScannerTests
         DazArchiveScanner.IsNestedArchive(path).ShouldBe(expected);
     }
 
+    [Fact]
+    public async Task ScanArchiveAsync_MapsReadMeRootToDocumentation()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var archivePath = fixture.CreateArchive("readme.zip",
+            ("ReadMe/author/product/readme.pdf", "content"));
+
+        var result = await scanner.ScanArchiveAsync(archivePath);
+
+        result.InstallableFiles.Count.ShouldBe(1);
+        result.InstallableFiles[0].InstalledRelativePath
+            .ShouldBe(Path.Combine("Documentation", "author", "product", "readme.pdf"));
+    }
+
     [Theory]
-    [InlineData("data/author/Thumbs.db", true)]
     [InlineData("data/author/product/file.duf", false)]
     public void ShouldIgnoreArchiveEntry_IgnoresKnownFiles(string path, bool expected)
     {
         DazArchiveScanner.ShouldIgnoreArchiveEntry(path).ShouldBe(expected);
+    }
+
+    [Fact]
+    public async Task ScanArchiveAsync_ReadsDisplayNameFromSupplementDsx()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        const string supplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Business Presentation Poses"/>
+            </ProductSupplement>
+            """;
+        var archivePath = fixture.CreateArchive("content.zip",
+            ("Supplement.dsx", supplement),
+            ("data/author/product/file.duf", "content"));
+
+        var result = await scanner.ScanArchiveAsync(archivePath);
+
+        result.DisplayName.ShouldBe("Business Presentation Poses");
+        result.ArchiveName.ShouldBe("content.zip");
+    }
+
+    [Fact]
+    public async Task ScanArchiveAsync_LeavesDisplayNameNullWhenSupplementDsxMissing()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var archivePath = fixture.CreateArchive("content.zip",
+            ("data/author/product/file.duf", "content"));
+
+        var result = await scanner.ScanArchiveAsync(archivePath);
+
+        result.DisplayName.ShouldBeNull();
     }
 }

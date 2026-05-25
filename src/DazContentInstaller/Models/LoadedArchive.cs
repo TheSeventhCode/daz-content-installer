@@ -12,7 +12,7 @@ namespace DazContentInstaller.Models;
 public partial class LoadedArchive : ViewModelBase
 {
     public string ArchivePath { get; }
-    public string DisplayName { get; }
+    public string DisplayName { get; private set; }
     public Guid? ArchiveId { get; set; }
     public ObservableCollection<AssetType> AssetTypes { get; } = [];
     public ObservableCollection<string> Categories { get; } = [];
@@ -114,6 +114,10 @@ public partial class LoadedArchive : ViewModelBase
     public void ApplyScan(DazArchiveScanResult scan)
     {
         CachedScanResult = scan;
+        DisplayName = string.IsNullOrWhiteSpace(scan.DisplayName)
+            ? Path.GetFileName(ArchivePath)
+            : scan.DisplayName;
+        OnPropertyChanged(nameof(DisplayName));
         TotalFiles = scan.InstallableFileCount;
         InstallableSizeBytes = scan.InstallableSize;
         ContentRoot = scan.ContentRoot;

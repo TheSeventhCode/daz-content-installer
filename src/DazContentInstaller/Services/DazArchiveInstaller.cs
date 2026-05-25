@@ -317,6 +317,7 @@ public class DazArchiveInstaller(
             throw new InvalidOperationException("Archive scan did not return a result.");
 
         archiveEntity.ContentRoot = scanResult.ContentRoot;
+        archiveEntity.DisplayName = scanResult.DisplayName;
         archiveEntity.AssetTypes = AssetTypeCollection.Serialize(scanResult.AssetTypes);
         archiveEntity.Categories = SerializeCategories(scanResult.Categories);
         archive.TotalFiles = scanResult.InstallableFileCount;

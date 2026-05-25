@@ -26,8 +26,32 @@ public class DazArchiveInstallerTests
 
         var archive = await fixture.DbContext.Archives.Include(x => x.AssetFiles).SingleAsync();
         archive.Status.ShouldBe(ArchiveStatus.Installed);
+        archive.ArchiveName.ShouldBe("content.zip");
+        archive.DisplayName.ShouldBeNull();
         archive.AssetFiles.Single().InstalledRelativePath
             .ShouldBe(Path.Combine("data", "author", "product", "file.txt"));
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_PersistsDisplayNameFromSupplementDsx()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        const string supplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Business Presentation Poses"/>
+            </ProductSupplement>
+            """;
+        var archivePath = fixture.CreateArchive("content.zip",
+            ("Supplement.dsx", supplement),
+            ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var archive = await fixture.DbContext.Archives.SingleAsync();
+        archive.ArchiveName.ShouldBe("content.zip");
+        archive.DisplayName.ShouldBe("Business Presentation Poses");
+        File.Exists(Path.Combine(fixture.BackupPath, "content.zip")).ShouldBeTrue();
     }
 
     [Fact]
