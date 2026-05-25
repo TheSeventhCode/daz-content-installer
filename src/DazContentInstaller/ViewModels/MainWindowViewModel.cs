@@ -39,6 +39,7 @@ public partial class MainWindowViewModel(
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallQueueCommand))]
     [NotifyCanExecuteChangedFor(nameof(UninstallSelectedArchiveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReinstallSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ForgetSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveQueuedArchivesCommand))]
     private bool _isBusy;
@@ -55,6 +56,7 @@ public partial class MainWindowViewModel(
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(UninstallSelectedArchiveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReinstallSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ForgetSelectedArchiveCommand))]
     private InstalledArchiveViewModel? _selectedInstalledArchive;
 
@@ -131,6 +133,7 @@ public partial class MainWindowViewModel(
         SelectedInstalledArchives.CollectionChanged += (_, _) =>
         {
             UninstallSelectedArchiveCommand.NotifyCanExecuteChanged();
+            ReinstallSelectedArchiveCommand.NotifyCanExecuteChanged();
             ForgetSelectedArchiveCommand.NotifyCanExecuteChanged();
         };
         SelectedQueueArchives.CollectionChanged += (_, _) =>
@@ -376,6 +379,74 @@ public partial class MainWindowViewModel(
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanReinstallSelectedArchive))]
+    private async Task ReinstallSelectedArchiveAsync()
+    {
+        var toReinstall = SelectedInstalledArchives
+            .Where(x => x.Status == ArchiveStatus.Uninstalled && File.Exists(x.BackupPath))
+            .ToList();
+        if (toReinstall.Count == 0)
+            return;
+
+        IsBusy = true;
+        ProgressPercent = 0;
+        SelectedInstalledArchives.Clear();
+
+        var queueItems = new List<LoadedArchive>();
+        foreach (var archive in toReinstall)
+        {
+            var existing = InstalledArchives.FirstOrDefault(x => x.Id == archive.Id);
+            if (existing is not null)
+                InstalledArchives.Remove(existing);
+
+            var queueItem = CreateLoadedArchiveForReinstall(archive);
+            QueueArchives.Add(queueItem);
+            queueItems.Add(queueItem);
+        }
+
+        ApplyInstalledArchiveFilter();
+        SelectedInstalledArchive = InstalledArchives.FirstOrDefault();
+        SortQueueArchives();
+        InstallQueueCommand.NotifyCanExecuteChanged();
+        ReinstallSelectedArchiveCommand.NotifyCanExecuteChanged();
+
+        try
+        {
+            var promotedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var archive in toReinstall)
+            {
+                var queueItem = queueItems.First(x => x.ArchiveId == archive.Id);
+
+                await foreach (var progress in archiveInstaller.ReinstallArchiveAsync(archive.Id, queueItem))
+                {
+                    var (percent, status) = QueueProgressAggregator.ComputeInstallProgress(queueItems);
+                    StatusText = status;
+                    ProgressPercent = percent;
+
+                    if (progress.ArchiveStatus is ArchiveStatus.Installed or ArchiveStatus.Error
+                        && promotedPaths.Add(progress.ArchivePath))
+                    {
+                        await PromoteInstalledArchiveAsync(progress);
+                    }
+                }
+            }
+
+            await LoadSelectedArchiveDetailsAsync(SelectedInstalledArchive);
+            SortQueueArchives();
+            StatusText = queueItems.All(x => x.ArchiveStatus == ArchiveStatus.Installed)
+                ? queueItems.Count == 1
+                    ? "Archive reinstalled"
+                    : $"{queueItems.Count} archives reinstalled"
+                : "Reinstall queue finished";
+        }
+        finally
+        {
+            IsBusy = false;
+            ReinstallSelectedArchiveCommand.NotifyCanExecuteChanged();
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(CanForgetSelectedArchive))]
     private async Task ForgetSelectedArchiveAsync()
     {
@@ -430,6 +501,12 @@ public partial class MainWindowViewModel(
     private bool CanUninstallSelectedArchive()
     {
         return !IsBusy && SelectedInstalledArchives.Any(x => x.Status == ArchiveStatus.Installed);
+    }
+
+    private bool CanReinstallSelectedArchive()
+    {
+        return !IsBusy && SelectedInstalledArchives.Any(x =>
+            x.Status == ArchiveStatus.Uninstalled && File.Exists(x.BackupPath));
     }
 
     private bool CanForgetSelectedArchive()
@@ -703,6 +780,26 @@ public partial class MainWindowViewModel(
             backupRoot = installerConfig.ArchiveBackupPath;
 
         return Path.Combine(backupRoot, archiveName);
+    }
+
+    private static LoadedArchive CreateLoadedArchiveForReinstall(InstalledArchiveViewModel archive)
+    {
+        var loaded = new LoadedArchive(archive.BackupPath)
+        {
+            ArchiveId = archive.Id,
+            ArchiveStatus = ArchiveStatus.Ready,
+            StatusText = "Ready to reinstall",
+            ContentRoot = archive.ContentRoot
+        };
+        loaded.FileSizeBytes = archive.ArchiveSize;
+
+        foreach (var category in archive.Categories)
+            loaded.Categories.Add(category);
+
+        foreach (var assetType in archive.AssetTypes)
+            loaded.AssetTypes.Add(assetType);
+
+        return loaded;
     }
 
     private static IReadOnlyList<string> ParseCategories(string categories)

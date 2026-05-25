@@ -16,8 +16,7 @@ public class ArchiveStatusToBrushConverter : IValueConverter
             ArchiveStatus.Installed => new SolidColorBrush(Color.Parse("#4CAF50")),
             ArchiveStatus.Installing => new SolidColorBrush(Color.Parse("#4F7CFF")),
             ArchiveStatus.Loading => new SolidColorBrush(Color.Parse("#C48C2A")),
-            ArchiveStatus.Duplicate => new SolidColorBrush(Color.Parse("#7D8796")),
-            ArchiveStatus.Uninstalled => new SolidColorBrush(Color.Parse("#7D8796")),
+            ArchiveStatus.Duplicate or ArchiveStatus.Uninstalled => new SolidColorBrush(Color.Parse("#7D8796")),
             ArchiveStatus.Error => new SolidColorBrush(Color.Parse("#D05C5C")),
             _ => new SolidColorBrush(Color.Parse("#A9B5C4"))
         };
@@ -36,8 +35,8 @@ public class FileSizeConverter : IValueConverter
         return value switch
         {
             ulong bytes => FileSizeFormatter.Format(bytes),
-            long bytes when bytes >= 0 => FileSizeFormatter.Format((ulong)bytes),
-            int bytes when bytes >= 0 => FileSizeFormatter.Format((ulong)bytes),
+            long bytes and >= 0 => FileSizeFormatter.Format((ulong)bytes),
+            int bytes and >= 0 => FileSizeFormatter.Format((ulong)bytes),
             _ => "0 B"
         };
     }

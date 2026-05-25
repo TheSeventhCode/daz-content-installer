@@ -88,6 +88,60 @@ public class DazArchiveInstallerTests
     }
 
     [Fact]
+    public async Task ReinstallArchiveAsync_ReinstallsFromBackupAfterUninstall()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var archivePath = fixture.CreateArchive("content.zip", ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var archiveEntity = await fixture.DbContext.Archives.SingleAsync();
+        await installer.UninstallArchiveAsync(archiveEntity.Id);
+
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "author", "product", "file.txt")).ShouldBeFalse();
+        fixture.DbContext.ChangeTracker.Clear();
+        archiveEntity = await fixture.DbContext.Archives.SingleAsync();
+        archiveEntity.Status.ShouldBe(ArchiveStatus.Uninstalled);
+
+        await installer.ReinstallArchiveAsync(archiveEntity.Id, new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
+        {
+            ArchiveId = archiveEntity.Id
+        }).ToListAsync();
+
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "author", "product", "file.txt")).ShouldBeTrue();
+        fixture.DbContext.ChangeTracker.Clear();
+        archiveEntity = await fixture.DbContext.Archives.SingleAsync();
+        archiveEntity.Status.ShouldBe(ArchiveStatus.Installed);
+        (await fixture.DbContext.Archives.CountAsync()).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task ReinstallArchiveAsync_ThrowsWhenBackupIsMissing()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var archivePath = fixture.CreateArchive("content.zip", ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var archiveEntity = await fixture.DbContext.Archives.SingleAsync();
+        await installer.UninstallArchiveAsync(archiveEntity.Id);
+
+        File.Delete(Path.Combine(fixture.BackupPath, "content.zip"));
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in installer.ReinstallArchiveAsync(archiveEntity.Id, new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
+            {
+                ArchiveId = archiveEntity.Id
+            }))
+            {
+            }
+        });
+    }
+
+    [Fact]
     public async Task UninstallArchiveAsync_DeletesOnlyActiveFilesForArchive()
     {
         await using var fixture = await InstallerFixture.CreateAsync();

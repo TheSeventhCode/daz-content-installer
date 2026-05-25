@@ -203,11 +203,14 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         foreach (var part in path.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, '/'],
                      StringSplitOptions.RemoveEmptyEntries))
         {
-            foreach (var (folder, assetType) in FolderToAssetType.Where(x =>
-                         part.Contains(x.Key, StringComparison.OrdinalIgnoreCase)))
+            foreach (var (folder, assetType) in FolderToAssetType)
             {
+                if (!string.Equals(part, folder, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 categories.Add(folder);
                 assetTypes.Add(assetType);
+                break;
             }
         }
     }

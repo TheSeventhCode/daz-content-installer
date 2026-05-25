@@ -24,6 +24,7 @@
                     <Button Content="Install Queue" Command="{Binding InstallQueueCommand}" Classes="primary" />
                     <Button Content="Refresh" Command="{Binding RefreshCommand}" Classes="secondary" />
                     <Button Content="Uninstall Selected" Command="{Binding UninstallSelectedArchiveCommand}" Classes="danger" />
+                    <Button Content="Reinstall Selected" Command="{Binding ReinstallSelectedArchiveCommand}" Classes="primary" />
                     <Button Content="Full Remove" Command="{Binding ForgetSelectedArchiveCommand}" Classes="danger" />
                     <Button Content="Settings" Click="OpenSettings_Click" Classes="secondary" />
                 </StackPanel>
