@@ -27,20 +27,21 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(config);
         services.Configure<InstallerConfig>(o => o.AppDataPath = appDataPath);
 
-        services.AddDbContext<ApplicationDbContext>(o => o.UseSqlite($"Data Source={config.DbPath}"),
-            ServiceLifetime.Singleton);
+        services.AddDbContextFactory<ApplicationDbContext>(o => o.UseSqlite($"Data Source={config.DbPath}"));
         services.AddSingleton<SettingsService>();
         services.AddSingleton<IDirectoryService>(sp => new DirectoryService(sp.GetRequiredService<SettingsService>()));
         services.AddSingleton<IFileDialogService, FileDialogService>();
         services.AddSingleton<IDazArchiveScanner, DazArchiveScanner>();
         services.AddSingleton<IAssetLibraryStatisticsService, AssetLibraryStatisticsService>();
+        services.AddSingleton<DestinationPathLockRegistry>();
         services.AddTransient<IDazArchiveInstaller>(sp =>
             new DazArchiveInstaller(
-                sp.GetRequiredService<ApplicationDbContext>(),
+                sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>(),
                 sp.GetRequiredService<SettingsService>(),
                 sp.GetRequiredService<InstallerConfig>(),
                 sp.GetRequiredService<IDirectoryService>(),
-                sp.GetRequiredService<IDazArchiveScanner>()));
+                sp.GetRequiredService<IDazArchiveScanner>(),
+                sp.GetRequiredService<DestinationPathLockRegistry>()));
 
         services.AddTransient<MainWindowViewModel>();
         services.AddTransient<SettingsWindowViewModel>();

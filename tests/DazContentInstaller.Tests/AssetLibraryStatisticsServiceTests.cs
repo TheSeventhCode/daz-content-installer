@@ -15,7 +15,7 @@ public class AssetLibraryStatisticsServiceTests
 
         await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
 
-        var statisticsService = new AssetLibraryStatisticsService(fixture.DbContext);
+        var statisticsService = new AssetLibraryStatisticsService(fixture.DbContextFactory);
         var statistics = await statisticsService.GetStatisticsAsync(fixture.AssetLibrary.Id);
 
         statistics.ArchiveCount.ShouldBe(1);

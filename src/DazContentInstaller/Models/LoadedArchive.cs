@@ -103,6 +103,8 @@ public class LoadedArchive : ViewModelBase
         ? "No installable DAZ content found yet"
         : $"{TotalFiles:N0} file(s), {FileSizeFormatter.Format(InstallableSizeBytes)}";
 
+    public DazArchiveScanResult? CachedScanResult { get; private set; }
+
     public LoadedArchive(string archivePath)
     {
         ArchivePath = archivePath;
@@ -114,6 +116,7 @@ public class LoadedArchive : ViewModelBase
 
     public void ApplyScan(DazArchiveScanResult scan)
     {
+        CachedScanResult = scan;
         TotalFiles = scan.InstallableFileCount;
         InstallableSizeBytes = scan.InstallableSize;
         ContentRoot = scan.ContentRoot;

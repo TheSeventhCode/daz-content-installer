@@ -112,12 +112,16 @@ public class DazArchiveInstallerTests
     public sealed class InstallerFixture : IAsyncDisposable
     {
         private readonly string _rootPath;
+        private readonly DbContextOptions<ApplicationDbContext> _dbContextOptions;
 
-        private InstallerFixture(string rootPath, ApplicationDbContext dbContext, SettingsService settingsService,
-            InstallerConfig config, AssetLibrary assetLibrary)
+        private InstallerFixture(string rootPath, ApplicationDbContext dbContext, DbContextOptions<ApplicationDbContext> dbContextOptions,
+            IDbContextFactory<ApplicationDbContext> dbContextFactory, SettingsService settingsService, InstallerConfig config,
+            AssetLibrary assetLibrary)
         {
             _rootPath = rootPath;
+            _dbContextOptions = dbContextOptions;
             DbContext = dbContext;
+            DbContextFactory = dbContextFactory;
             SettingsService = settingsService;
             Config = config;
             AssetLibrary = assetLibrary;
@@ -126,13 +130,14 @@ public class DazArchiveInstallerTests
         }
 
         public ApplicationDbContext DbContext { get; }
+        public IDbContextFactory<ApplicationDbContext> DbContextFactory { get; }
         public SettingsService SettingsService { get; }
         public InstallerConfig Config { get; }
         public AssetLibrary AssetLibrary { get; }
         public string LibraryPath { get; }
         public string BackupPath { get; }
 
-        public static async Task<InstallerFixture> CreateAsync()
+        public static async Task<InstallerFixture> CreateAsync(Action<InstallerConfig>? configure = null)
         {
             var rootPath = Path.Combine(Path.GetTempPath(), $"DazContentInstallerTests-{Guid.NewGuid():N}");
             Directory.CreateDirectory(rootPath);
@@ -141,6 +146,7 @@ public class DazArchiveInstallerTests
             Directory.CreateDirectory(libraryPath);
 
             var config = new InstallerConfig { AppDataPath = Path.Combine(rootPath, "appdata") };
+            configure?.Invoke(config);
             Directory.CreateDirectory(config.AppDataPath);
 
             var options = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -149,7 +155,8 @@ public class DazArchiveInstallerTests
             var dbContext = new ApplicationDbContext(options);
             await dbContext.Database.MigrateAsync();
 
-            var settingsService = new SettingsService(Options.Create(config), dbContext);
+            var dbContextFactory = new TestDbContextFactory(options);
+            var settingsService = new SettingsService(Options.Create(config), dbContextFactory);
             settingsService.UpdateSettings(new AppSettings
             {
                 CreateBackupBeforeInstall = true,
@@ -165,15 +172,19 @@ public class DazArchiveInstallerTests
             dbContext.AssetLibraries.Add(assetLibrary);
             await dbContext.SaveChangesAsync();
 
-            return new InstallerFixture(rootPath, dbContext, settingsService, config, assetLibrary);
+            return new InstallerFixture(rootPath, dbContext, options, dbContextFactory, settingsService, config, assetLibrary);
         }
 
-        public IDazArchiveInstaller CreateInstaller()
+        public IDazArchiveInstaller CreateInstaller(IDazArchiveScanner? archiveScanner = null)
         {
             var directoryService = new DirectoryService(SettingsService.CurrentSettings);
-            return new DazArchiveInstaller(DbContext, SettingsService, Config,
+            return new DazArchiveInstaller(
+                DbContextFactory,
+                SettingsService,
+                Config,
                 directoryService,
-                new DazArchiveScanner(directoryService));
+                archiveScanner ?? new DazArchiveScanner(directoryService),
+                new DestinationPathLockRegistry());
         }
 
         public string CreateArchive(string fileName, params (string EntryPath, string Content)[] entries)
@@ -206,5 +217,11 @@ public class DazArchiveInstallerTests
             if (Directory.Exists(_rootPath))
                 Directory.Delete(_rootPath, true);
         }
+    }
+
+    internal sealed class TestDbContextFactory(DbContextOptions<ApplicationDbContext> options)
+        : IDbContextFactory<ApplicationDbContext>
+    {
+        public ApplicationDbContext CreateDbContext() => new(options);
     }
 }

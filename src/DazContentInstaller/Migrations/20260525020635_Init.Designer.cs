@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DazContentInstaller.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260525011955_init")]
-    partial class init
+    [Migration("20260525020635_Init")]
+    partial class Init
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

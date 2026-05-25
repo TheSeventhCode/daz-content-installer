@@ -25,7 +25,8 @@ public partial class App : Application
 
         using (var scope = services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+            using var db = factory.CreateDbContext();
             db.Database.Migrate();
         }
 

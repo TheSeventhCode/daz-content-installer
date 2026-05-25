@@ -8,4 +8,6 @@ public class InstallerConfig
     public string DbPath => Path.Combine(AppDataPath, "database.db");
     public string ArchiveBackupPath => Path.Combine(AppDataPath, "archives");
     public string AppSettingsPath => Path.Combine(AppDataPath, "settings.json");
+    public int MaxConcurrentArchiveInstalls { get; set; } = 2;
+    public int MaxConcurrentScans { get; set; } = 4;
 }

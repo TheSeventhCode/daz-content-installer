@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,7 +16,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DazContentInstaller.ViewModels;
 
 public partial class MainWindowViewModel(
-    ApplicationDbContext dbContext,
+    IDbContextFactory<ApplicationDbContext> dbContextFactory,
     IDazArchiveInstaller archiveInstaller,
     IDazArchiveScanner archiveScanner,
     IFileDialogService fileDialogService,
@@ -195,33 +196,70 @@ public partial class MainWindowViewModel(
             return;
 
         IsBusy = true;
+        ProgressPercent = 0;
+        var total = addedArchives.Count;
+        var completedScans = 0;
+        var scanLock = new object();
+        var maxScanParallelism = Math.Max(1, installerConfig.MaxConcurrentScans);
+        using var scanSemaphore = new SemaphoreSlim(maxScanParallelism, maxScanParallelism);
+
         try
         {
-            foreach (var archive in addedArchives)
+            var scanTasks = addedArchives.Select(async archive =>
             {
-                archive.ArchiveStatus = ArchiveStatus.Loading;
-                archive.StatusText = "Scanning archive";
-                archive.ProgressPercent = 0;
-                StatusText = $"Scanning {archive.DisplayName}";
-
+                await scanSemaphore.WaitAsync();
                 try
                 {
-                    var scan = await archiveScanner.ScanArchiveAsync(archive.ArchivePath);
-                    archive.ApplyScan(scan);
+                    await UiThread.RunAsync(() =>
+                    {
+                        archive.ArchiveStatus = ArchiveStatus.Loading;
+                        archive.StatusText = "Scanning archive";
+                        archive.ProgressPercent = 0;
+                    });
+
+                    try
+                    {
+                        var scan = await archiveScanner.ScanArchiveAsync(archive.ArchivePath);
+                        await UiThread.RunAsync(() => archive.ApplyScan(scan));
+                    }
+                    catch (Exception ex)
+                    {
+                        await UiThread.RunAsync(() =>
+                        {
+                            archive.ArchiveStatus = ArchiveStatus.Error;
+                            archive.ErrorMessage = ex.Message;
+                            archive.StatusText = ex.Message;
+                        });
+                    }
                 }
-                catch (Exception ex)
+                finally
                 {
-                    archive.ArchiveStatus = ArchiveStatus.Error;
-                    archive.ErrorMessage = ex.Message;
-                    archive.StatusText = ex.Message;
+                    int done;
+                    lock (scanLock)
+                    {
+                        completedScans++;
+                        done = completedScans;
+                    }
+
+                    var (percent, status) = QueueProgressAggregator.ComputeScanProgress(done, total);
+                    await UiThread.RunAsync(() =>
+                    {
+                        ProgressPercent = percent;
+                        StatusText = status;
+                    });
+
+                    scanSemaphore.Release();
                 }
-            }
+            });
+
+            await Task.WhenAll(scanTasks);
         }
         finally
         {
             IsBusy = false;
             InstallQueueCommand.NotifyCanExecuteChanged();
             StatusText = $"{QueueArchives.Count} archive(s) queued";
+            ProgressPercent = 0;
             SortQueueArchives();
         }
     }
@@ -246,28 +284,24 @@ public partial class MainWindowViewModel(
                 return;
             }
 
-            var installedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var promotedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await foreach (var progress in archiveInstaller.InstallArchivesAsync(SelectedAssetLibrary.Id, installQueue))
             {
-                StatusText = progress.StatusText ?? progress.DisplayName;
-                ProgressPercent = progress.ProgressPercent;
+                var (percent, status) = QueueProgressAggregator.ComputeInstallProgress(installQueue);
+                StatusText = status;
+                ProgressPercent = percent;
 
-                if (progress.ArchiveStatus == ArchiveStatus.Installed)
-                    installedPaths.Add(progress.ArchivePath);
-            }
-
-            foreach (var path in installedPaths)
-            {
-                var installed = QueueArchives.FirstOrDefault(x =>
-                    string.Equals(x.ArchivePath, path, StringComparison.OrdinalIgnoreCase));
-                if (installed is not null)
-                    QueueArchives.Remove(installed);
+                if (progress.ArchiveStatus == ArchiveStatus.Installed
+                    && promotedPaths.Add(progress.ArchivePath))
+                {
+                    await PromoteInstalledArchiveAsync(progress);
+                }
             }
 
             InstallQueueCommand.NotifyCanExecuteChanged();
 
-            await RefreshInstalledArchivesAsync();
             await LoadLibrariesAsync();
+            await RefreshSelectedAssetLibrarySummaryAsync();
             SortQueueArchives();
             StatusText = "Install queue finished";
         }
@@ -405,6 +439,7 @@ public partial class MainWindowViewModel(
 
     private async Task LoadLibrariesAsync()
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var libraries = await dbContext.AssetLibraries.OrderBy(x => x.Name).ToListAsync();
         AssetLibraries.Clear();
 
@@ -430,6 +465,7 @@ public partial class MainWindowViewModel(
         InstalledArchives.Clear();
         SelectedInstalledArchives.Clear();
 
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var topLevelArchives = await dbContext.Archives
             .Include(x => x.AssetLibrary)
             .Include(x => x.AssetFiles)
@@ -440,29 +476,8 @@ public partial class MainWindowViewModel(
 
         foreach (var archive in topLevelArchives.OrderBy(x => x.ArchiveName, StringComparer.OrdinalIgnoreCase))
         {
-            var archiveIds = await GetArchiveTreeIdsAsync(archive.Id);
-            var records = await dbContext.InstallRecords
-                .Where(x => archiveIds.Contains(x.ArchiveId))
-                .ToListAsync();
-
-            InstalledArchives.Add(new InstalledArchiveViewModel
-            {
-                Id = archive.Id,
-                ArchiveName = archive.ArchiveName,
-                AssetLibraryName = archive.AssetLibrary.Name,
-                ContentRoot = archive.ContentRoot,
-                BackupPath = GetDerivedBackupPath(archive.AssetLibrary, archive.ArchiveName),
-                Status = archive.Status,
-                AssetTypes = AssetTypeCollection.Parse(archive.AssetTypes),
-                Categories = ParseCategories(archive.Categories),
-                InstalledAt = archive.InstallCompletedAt ?? archive.InstallStartedAt,
-                ArchiveSize = archive.ArchiveSize,
-                FileCount = records.Count,
-                ActiveFileCount = records.Count(x => !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled),
-                ReplacedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Replaced),
-                SkippedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Skipped),
-                ErrorMessage = archive.ErrorMessage
-            });
+            var viewModel = await CreateInstalledArchiveViewModelAsync(dbContext, archive);
+            InstalledArchives.Add(viewModel);
         }
 
         foreach (var archive in InstalledArchives.Where(x => selectedIds.Contains(x.Id)))
@@ -473,6 +488,81 @@ public partial class MainWindowViewModel(
 
         ApplyInstalledArchiveFilter();
         await RefreshSelectedAssetLibrarySummaryAsync();
+    }
+
+    private async Task PromoteInstalledArchiveAsync(LoadedArchive loadedArchive)
+    {
+        if (loadedArchive.ArchiveId is null)
+            return;
+
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
+        var archive = await dbContext.Archives
+            .Include(x => x.AssetLibrary)
+            .Include(x => x.AssetFiles)
+            .ThenInclude(x => x.InstallRecord)
+            .FirstOrDefaultAsync(x => x.Id == loadedArchive.ArchiveId && x.ParentArchiveId == null);
+
+        if (archive is null)
+            return;
+
+        var viewModel = await CreateInstalledArchiveViewModelAsync(dbContext, archive);
+
+        await UiThread.RunAsync(() =>
+        {
+            var queued = QueueArchives.FirstOrDefault(x =>
+                string.Equals(x.ArchivePath, loadedArchive.ArchivePath, StringComparison.OrdinalIgnoreCase));
+            if (queued is not null)
+                QueueArchives.Remove(queued);
+
+            var existingIndex = -1;
+            for (var index = 0; index < InstalledArchives.Count; index++)
+            {
+                if (InstalledArchives[index].Id != viewModel.Id)
+                    continue;
+
+                existingIndex = index;
+                break;
+            }
+
+            if (existingIndex >= 0)
+                InstalledArchives[existingIndex] = viewModel;
+            else
+                InstalledArchives.Add(viewModel);
+
+            InstalledArchives.SortBy(x => x.ArchiveName);
+            ApplyInstalledArchiveFilter();
+            InstallQueueCommand.NotifyCanExecuteChanged();
+        });
+
+        await RefreshSelectedAssetLibrarySummaryAsync();
+    }
+
+    private async Task<InstalledArchiveViewModel> CreateInstalledArchiveViewModelAsync(ApplicationDbContext dbContext,
+        Archive archive)
+    {
+        var archiveIds = await GetArchiveTreeIdsAsync(dbContext, archive.Id);
+        var records = await dbContext.InstallRecords
+            .Where(x => archiveIds.Contains(x.ArchiveId))
+            .ToListAsync();
+
+        return new InstalledArchiveViewModel
+        {
+            Id = archive.Id,
+            ArchiveName = archive.ArchiveName,
+            AssetLibraryName = archive.AssetLibrary.Name,
+            ContentRoot = archive.ContentRoot,
+            BackupPath = GetDerivedBackupPath(archive.AssetLibrary, archive.ArchiveName),
+            Status = archive.Status,
+            AssetTypes = AssetTypeCollection.Parse(archive.AssetTypes),
+            Categories = ParseCategories(archive.Categories),
+            InstalledAt = archive.InstallCompletedAt ?? archive.InstallStartedAt,
+            ArchiveSize = archive.ArchiveSize,
+            FileCount = records.Count,
+            ActiveFileCount = records.Count(x => !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled),
+            ReplacedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Replaced),
+            SkippedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Skipped),
+            ErrorMessage = archive.ErrorMessage
+        };
     }
 
     private async Task RefreshSelectedAssetLibrarySummaryAsync()
@@ -505,7 +595,8 @@ public partial class MainWindowViewModel(
         if (archive is null)
             return;
 
-        var archiveIds = await GetArchiveTreeIdsAsync(archive.Id);
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
+        var archiveIds = await GetArchiveTreeIdsAsync(dbContext, archive.Id);
         var records = await dbContext.InstallRecords
             .Include(x => x.AssetFile)
             .Where(x => archiveIds.Contains(x.ArchiveId))
@@ -583,7 +674,7 @@ public partial class MainWindowViewModel(
                && value.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(Guid rootId)
+    private async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(ApplicationDbContext dbContext, Guid rootId)
     {
         var queue = new Queue<Guid>();
         var visited = new HashSet<Guid>();

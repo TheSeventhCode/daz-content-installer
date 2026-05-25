@@ -20,11 +20,14 @@ public interface IAssetLibraryStatisticsService
     Task<AssetLibraryStatistics> GetStatisticsAsync(Guid assetLibraryId, CancellationToken cancellationToken = default);
 }
 
-public class AssetLibraryStatisticsService(ApplicationDbContext dbContext) : IAssetLibraryStatisticsService
+public class AssetLibraryStatisticsService(IDbContextFactory<ApplicationDbContext> dbContextFactory)
+    : IAssetLibraryStatisticsService
 {
     public async Task<AssetLibraryStatistics> GetStatisticsAsync(Guid assetLibraryId,
         CancellationToken cancellationToken = default)
     {
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         var archiveQuery = dbContext.Archives
             .AsNoTracking()
             .Where(x => x.AssetLibraryId == assetLibraryId && x.ParentArchiveId == null);

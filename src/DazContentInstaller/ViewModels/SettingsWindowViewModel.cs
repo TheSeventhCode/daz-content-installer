@@ -13,7 +13,7 @@ using Microsoft.EntityFrameworkCore;
 namespace DazContentInstaller.ViewModels;
 
 public partial class SettingsWindowViewModel(
-    ApplicationDbContext dbContext,
+    IDbContextFactory<ApplicationDbContext> dbContextFactory,
     SettingsService settingsService,
     IFileDialogService fileDialogService) : ViewModelBase
 {
@@ -48,6 +48,7 @@ public partial class SettingsWindowViewModel(
         DefaultArchiveBackupPath = settings.DefaultArchiveBackupPath;
         TempWorkingDirectoryPath = settings.TempWorkingDirectoryPath;
 
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var libraries = await dbContext.AssetLibraries.OrderBy(x => x.Name).ToListAsync();
         AssetLibraries.Clear();
         foreach (var library in libraries)
@@ -168,6 +169,7 @@ public partial class SettingsWindowViewModel(
             }
         }
 
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var currentLibraries = await dbContext.AssetLibraries.ToListAsync();
         foreach (var currentLibrary in currentLibraries.Where(x => AssetLibraries.All(vm => vm.Id != x.Id)))
             dbContext.AssetLibraries.Remove(currentLibrary);

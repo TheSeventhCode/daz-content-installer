@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 
 namespace DazContentInstaller.Services;
 
-public class SettingsService(IOptions<InstallerConfig> options, ApplicationDbContext dbContext)
+public class SettingsService(IOptions<InstallerConfig> options, IDbContextFactory<ApplicationDbContext> dbContextFactory)
 {
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { WriteIndented = true };
     private readonly string _settingsPath = options.Value.AppSettingsPath;
@@ -93,6 +93,7 @@ public class SettingsService(IOptions<InstallerConfig> options, ApplicationDbCon
             @"C:\Users\Public\Documents\My DAZ 3D Library"
         };
 
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var currentLibraries = await dbContext.AssetLibraries.Select(d => d.Path).ToListAsync();
 
         foreach (var library in potentialPaths
