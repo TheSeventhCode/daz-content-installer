@@ -1,0 +1,111 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:DazContentInstaller.ViewModels"
+        x:Class="DazContentInstaller.Views.ArchiveOverridesWindow"
+        x:DataType="vm:ArchiveOverridesWindowViewModel"
+        Width="980"
+        Height="720"
+        MinWidth="820"
+        MinHeight="620"
+        Title="{Binding WindowTitle}"
+        Icon="/Assets/icon.png" CanResize="True">
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding StatusText}"
+                           VerticalAlignment="Center"
+                           Classes="caption" />
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                    <Button Content="Close" Command="{Binding CloseCommand}" Classes="secondary" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Margin="16" ColumnDefinitions="*,16,*" RowDefinitions="Auto,12,*">
+            <TextBlock Text="Target Directory"
+                       Grid.ColumnSpan="3"
+                       Classes="sectionTitle" />
+
+            <Border Grid.Row="2"
+                    Grid.Column="0"
+                    Classes="card"
+                    VerticalAlignment="Stretch">
+                <Grid RowDefinitions="Auto,8,Auto,8,*">
+                    <TextBlock Text="Choose where inside the installed archive to place override files."
+                               Classes="caption"
+                               TextWrapping="Wrap" />
+
+                    <TextBox Grid.Row="2"
+                             PlaceholderText="Search directories..."
+                             Text="{Binding DirectorySearchText}" />
+
+                    <ListBox Grid.Row="4"
+                             ItemsSource="{Binding FilteredCandidateDirectories}"
+                             SelectedItem="{Binding SelectedDirectory}" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="2"
+                    Grid.Column="2"
+                    Classes="card"
+                    VerticalAlignment="Stretch">
+                <Grid RowDefinitions="Auto,8,Auto,8,*">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Managed Overrides"
+                                   Classes="sectionTitle" />
+                        <TextBlock Text="{Binding Overrides.Count, StringFormat='({0})'}"
+                                   Classes="caption"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Content="Add Override Files..."
+                                Command="{Binding BrowseOverrideFilesCommand}"
+                                Classes="primary" />
+                        <Button Content="Delete Selected"
+                                Command="{Binding DeleteSelectedOverrideCommand}"
+                                Classes="danger" />
+                    </StackPanel>
+
+                    <ListBox Grid.Row="4"
+                             ItemsSource="{Binding Overrides}"
+                             SelectedItem="{Binding SelectedOverride}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ArchiveOverrideItemViewModel">
+                                <Border Background="{DynamicResource SurfaceAltBrush}"
+                                        CornerRadius="8"
+                                        Padding="10"
+                                        Margin="0,0,0,8">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Spacing="4">
+                                            <TextBlock Text="{Binding InstalledRelativePath}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding CreatedAt, StringFormat='Added {0:g}'}"
+                                                       Classes="caption" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1"
+                                                Background="{DynamicResource AccentBrush}"
+                                                CornerRadius="999"
+                                                Padding="8,2"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ModeLabel}"
+                                                       FontSize="11"
+                                                       Foreground="White" />
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

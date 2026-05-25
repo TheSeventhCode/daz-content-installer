@@ -24,7 +24,8 @@ public partial class MainWindowViewModel(
     InstallerConfig installerConfig,
     IAssetLibraryStatisticsService assetLibraryStatisticsService,
     IInstallRecordStatisticsService installRecordStatisticsService,
-    IArchiveFileDetailsService archiveFileDetailsService)
+    IArchiveFileDetailsService archiveFileDetailsService,
+    IArchiveOverrideService archiveOverrideService)
     : ViewModelBase
 {
     private const int CollectionUpdateBatchSize = 50;
@@ -63,10 +64,14 @@ public partial class MainWindowViewModel(
 
     public bool ShowIndeterminateProgress => IsBusy && ProgressPercent <= 0;
 
+    public bool CanOpenOverrides =>
+        SelectedInstalledArchive?.Status == ArchiveStatus.Installed && !IsBusy;
+
     partial void OnIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(WindowTitle));
         OnPropertyChanged(nameof(ShowIndeterminateProgress));
+        OnPropertyChanged(nameof(CanOpenOverrides));
     }
 
     partial void OnProgressPercentChanged(double value) => OnPropertyChanged(nameof(ShowIndeterminateProgress));
@@ -79,6 +84,7 @@ public partial class MainWindowViewModel(
     [NotifyCanExecuteChangedFor(nameof(UninstallSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReinstallSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ForgetSelectedArchiveCommand))]
+    [NotifyPropertyChangedFor(nameof(CanOpenOverrides))]
     public partial InstalledArchiveViewModel? SelectedInstalledArchive { get; set; }
 
     [ObservableProperty] public partial LoadedArchive? SelectedQueueArchive { get; set; }
@@ -413,18 +419,36 @@ public partial class MainWindowViewModel(
         try
         {
             var total = toUninstall.Count;
+            var blockedMessages = new List<string>();
             for (var index = 0; index < toUninstall.Count; index++)
             {
                 var archive = toUninstall[index];
                 if (_uiProgressThrottler.ShouldUpdate(force: index == total - 1))
                     StatusText = $"Uninstalling {archive.EffectiveDisplayName} ({index + 1}/{total})";
 
-                await archiveInstaller.UninstallArchiveAsync(archive.Id);
+                try
+                {
+                    await archiveInstaller.UninstallArchiveAsync(archive.Id);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    blockedMessages.Add($"{archive.EffectiveDisplayName}: {ex.Message}");
+                }
+
                 await Task.Yield();
             }
 
             await RefreshInstalledArchivesAsync();
             await LoadSelectedArchiveDetailsAsync(SelectedInstalledArchive);
+
+            if (blockedMessages.Count > 0)
+            {
+                StatusText = blockedMessages.Count == 1
+                    ? blockedMessages[0]
+                    : string.Join(" · ", blockedMessages);
+                ProgressPercent = 100;
+                return;
+            }
 
             StatusText = toUninstall.Count == 1
                 ? toUninstall[0].Status == ArchiveStatus.Installed
@@ -544,6 +568,13 @@ public partial class MainWindowViewModel(
         StatusText = "Settings updated";
     }
 
+    public async Task ReloadAfterOverridesAsync()
+    {
+        await RefreshInstalledArchivesAsync();
+        await LoadSelectedArchiveDetailsAsync(SelectedInstalledArchive);
+        StatusText = "Overrides updated";
+    }
+
     private bool CanInstallQueue()
     {
         return !IsBusy && SelectedAssetLibrary is not null &&
@@ -619,6 +650,15 @@ public partial class MainWindowViewModel(
             .ToListAsync();
 
         var countsByRootArchiveId = await BuildInstallRecordCountsByRootArchiveAsync(dbContext, topLevelArchives);
+        var rootArchiveIds = topLevelArchives.Select(x => x.Id).ToList();
+        var overrideCountsByRootArchiveId = rootArchiveIds.Count == 0
+            ? []
+            : await dbContext.ArchiveOverrides
+                .AsNoTracking()
+                .Where(x => rootArchiveIds.Contains(x.RootArchiveId))
+                .GroupBy(x => x.RootArchiveId)
+                .Select(g => new { RootArchiveId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.RootArchiveId, x => x.Count);
 
         var viewModels = new List<InstalledArchiveViewModel>();
         foreach (var archive in topLevelArchives.OrderBy(x =>
@@ -627,7 +667,8 @@ public partial class MainWindowViewModel(
         {
             countsByRootArchiveId.TryGetValue(archive.Id, out var counts);
             counts ??= InstallRecordCounts.Empty;
-            viewModels.Add(CreateInstalledArchiveViewModel(archive, counts));
+            overrideCountsByRootArchiveId.TryGetValue(archive.Id, out var overrideCount);
+            viewModels.Add(CreateInstalledArchiveViewModel(archive, counts, overrideCount));
             if (viewModels.Count % CollectionUpdateBatchSize == 0)
                 await Task.Yield();
         }
@@ -684,7 +725,8 @@ public partial class MainWindowViewModel(
         var archiveIds = await GetArchiveTreeIdsForLibraryAsync(
             dbContext, archive.AssetLibraryId, archive.Id);
         var counts = await installRecordStatisticsService.GetCountsForArchivesAsync(dbContext, archiveIds);
-        var viewModel = CreateInstalledArchiveViewModel(archive, counts);
+        var overrideCount = await archiveOverrideService.GetOverrideCountAsync(archive.Id);
+        var viewModel = CreateInstalledArchiveViewModel(archive, counts, overrideCount);
 
         await UiThread.RunAsync(() =>
         {
@@ -752,7 +794,10 @@ public partial class MainWindowViewModel(
         return countsByRootArchiveId;
     }
 
-    private InstalledArchiveViewModel CreateInstalledArchiveViewModel(Archive archive, InstallRecordCounts counts)
+    private InstalledArchiveViewModel CreateInstalledArchiveViewModel(
+        Archive archive,
+        InstallRecordCounts counts,
+        int overrideCount = 0)
     {
         var thumbnailPath = GetDerivedThumbnailPath(archive.AssetLibrary, archive.Id, archive.ThumbnailFileExtension);
 
@@ -774,6 +819,7 @@ public partial class MainWindowViewModel(
             ActiveFileCount = counts.ActiveFileCount,
             ReplacedFileCount = counts.ReplacedFileCount,
             SkippedFileCount = counts.SkippedFileCount,
+            OverrideCount = overrideCount,
             ErrorMessage = archive.ErrorMessage
         };
     }

@@ -36,6 +36,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IInstallRecordStatisticsService, InstallRecordStatisticsService>();
         services.AddSingleton<IArchiveFileDetailsService, ArchiveFileDetailsService>();
         services.AddSingleton<DestinationPathLockRegistry>();
+        services.AddSingleton<IArchiveOverrideService, ArchiveOverrideService>();
         services.AddTransient<IDazArchiveInstaller>(sp =>
             new DazArchiveInstaller(
                 sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>(),
@@ -43,11 +44,14 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<InstallerConfig>(),
                 sp.GetRequiredService<IDirectoryService>(),
                 sp.GetRequiredService<IDazArchiveScanner>(),
-                sp.GetRequiredService<DestinationPathLockRegistry>()));
+                sp.GetRequiredService<DestinationPathLockRegistry>(),
+                sp.GetRequiredService<IArchiveOverrideService>()));
 
         services.AddTransient<MainWindowViewModel>();
         services.AddTransient<SettingsWindowViewModel>();
         services.AddTransient<SettingsWindow>();
+        services.AddTransient<ArchiveOverridesWindowViewModel>();
+        services.AddTransient<ArchiveOverridesWindow>();
         
         return services;
     }

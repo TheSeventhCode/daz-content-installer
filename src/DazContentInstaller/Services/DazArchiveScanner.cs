@@ -83,6 +83,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         ["morphs"] = AssetType.Morphs,
         ["lights"] = AssetType.Lights,
         ["light presets"] = AssetType.Lights,
+        ["shader presets"] = AssetType.Shaders,
         ["cameras"] = AssetType.Cameras,
         ["scripts"] = AssetType.Scripts,
         ["textures"] = AssetType.Textures

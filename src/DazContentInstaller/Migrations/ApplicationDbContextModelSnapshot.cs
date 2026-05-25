@@ -87,6 +87,53 @@ namespace DazContentInstaller.Migrations
                     b.ToTable("Archives");
                 });
 
+            modelBuilder.Entity("DazContentInstaller.Database.ArchiveOverride", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AssetLibraryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InstalledRelativeDirectory")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ManagedFilePath")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OriginalFileBackupPath")
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RootArchiveId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssetLibraryId");
+
+                    b.HasIndex("RootArchiveId", "InstalledRelativeDirectory", "FileName")
+                        .IsUnique();
+
+                    b.ToTable("ArchiveOverrides");
+                });
+
             modelBuilder.Entity("DazContentInstaller.Database.AssetFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -236,6 +283,25 @@ namespace DazContentInstaller.Migrations
                     b.Navigation("AssetLibrary");
 
                     b.Navigation("ParentArchive");
+                });
+
+            modelBuilder.Entity("DazContentInstaller.Database.ArchiveOverride", b =>
+                {
+                    b.HasOne("DazContentInstaller.Database.AssetLibrary", "AssetLibrary")
+                        .WithMany()
+                        .HasForeignKey("AssetLibraryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DazContentInstaller.Database.Archive", "RootArchive")
+                        .WithMany()
+                        .HasForeignKey("RootArchiveId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AssetLibrary");
+
+                    b.Navigation("RootArchive");
                 });
 
             modelBuilder.Entity("DazContentInstaller.Database.AssetFile", b =>

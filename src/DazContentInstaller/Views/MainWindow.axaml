@@ -10,7 +10,7 @@
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/icon.png"
         Title="{Binding WindowTitle}"
-        CanMaximize="true">
+        CanMaximize="True" CanResize="True">
     <Window.Resources>
         <conv:ArchiveStatusToBrushConverter x:Key="ArchiveStatusToBrushConverter" />
         <conv:ArchiveThumbnailConverter x:Key="ArchiveThumbnailConverter" />
@@ -317,7 +317,15 @@
 
             <Border Grid.Column="2" Classes="card">
                 <Grid RowDefinitions="Auto,12,Auto,12,*">
-                    <TextBlock Text="Archive Details" Classes="sectionTitle" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Archive Details" Classes="sectionTitle" />
+                        <Button Grid.Column="1"
+                                Content="Override"
+                                Click="OpenOverrides_Click"
+                                Classes="secondary"
+                                IsEnabled="{Binding CanOpenOverrides}"
+                                IsVisible="{Binding CanOpenOverrides}" />
+                    </Grid>
 
                     <Grid Grid.Row="2" ColumnDefinitions="Auto,12,*">
                         <Border Width="120"
@@ -357,9 +365,12 @@
                             <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedInstalledArchive.ContentRoot}" />
 
                             <TextBlock Grid.Row="6" Text="Counts" Classes="caption" />
-                            <TextBlock Grid.Row="6"
-                                       Grid.Column="1"
-                                       Text="{Binding SelectedInstalledArchive.FileCount, StringFormat='Files: {0}'}"/>
+                            <StackPanel Grid.Row="6" Grid.Column="1" Spacing="4">
+                                <TextBlock Text="{Binding SelectedInstalledArchive.FileCount, StringFormat='Files: {0}'}"/>
+                                <TextBlock Text="{Binding SelectedInstalledArchive.OverrideCount, StringFormat='Overrides: {0}'}"
+                                           Classes="caption"
+                                           IsVisible="{Binding SelectedInstalledArchive.HasOverrides}" />
+                            </StackPanel>
 
                             <TextBlock Grid.Row="7" Text="Types" Classes="caption" />
                             <ItemsControl Grid.Row="7"

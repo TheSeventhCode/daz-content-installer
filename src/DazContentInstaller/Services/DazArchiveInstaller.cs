@@ -34,7 +34,8 @@ public class DazArchiveInstaller(
     InstallerConfig installerConfig,
     IDirectoryService directoryService,
     IDazArchiveScanner archiveScanner,
-    DestinationPathLockRegistry destinationPathLockRegistry)
+    DestinationPathLockRegistry destinationPathLockRegistry,
+    IArchiveOverrideService archiveOverrideService)
     : IDazArchiveInstaller
 {
     private static readonly TimeSpan InstallProgressYieldInterval = TimeSpan.FromMilliseconds(100);
@@ -53,6 +54,15 @@ public class DazArchiveInstaller(
 
     public async Task UninstallArchiveAsync(Guid archiveId, CancellationToken cancellationToken = default)
     {
+        if (await archiveOverrideService.HasOverridesAsync(archiveId, cancellationToken).ConfigureAwait(false))
+        {
+            var overrideCount = await archiveOverrideService
+                .GetOverrideCountAsync(archiveId, cancellationToken)
+                .ConfigureAwait(false);
+            throw new InvalidOperationException(
+                $"Cannot uninstall this archive while {overrideCount} override(s) remain. Remove overrides first.");
+        }
+
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var archiveIds = await GetArchiveTreeIdsAsync(dbContext, archiveId, cancellationToken).ConfigureAwait(false);
         var installRecords = await dbContext.InstallRecords

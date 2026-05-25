@@ -11,6 +11,7 @@ namespace DazContentInstaller.Services;
 public interface IFileDialogService
 {
     Task<IReadOnlyList<string>> OpenArchiveFilesAsync();
+    Task<IReadOnlyList<string>> OpenFilesAsync(string title, bool allowMultiple = true);
     Task<string?> OpenFolderAsync(string title, string? startPath = null);
 }
 
@@ -37,6 +38,26 @@ public class FileDialogService(Func<IStorageProvider?>? storageProviderFactory =
                 },
                 FilePickerFileTypes.All
             ]
+        });
+
+        return files
+            .Select(x => x.Path.LocalPath)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Cast<string>()
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<string>> OpenFilesAsync(string title, bool allowMultiple = true)
+    {
+        var storageProvider = _storageProviderFactory();
+        if (storageProvider is null)
+            return [];
+
+        var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = allowMultiple,
+            FileTypeFilter = [FilePickerFileTypes.All]
         });
 
         return files

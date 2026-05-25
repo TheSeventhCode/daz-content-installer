@@ -24,4 +24,14 @@ public class FileDialogServiceTests
 
         result.ShouldBeNull();
     }
+
+    [Fact]
+    public async Task OpenFilesAsync_ReturnsEmptyWhenStorageProviderUnavailable()
+    {
+        var service = new FileDialogService(() => null);
+
+        var result = await service.OpenFilesAsync("Select files");
+
+        result.ShouldBeEmpty();
+    }
 }

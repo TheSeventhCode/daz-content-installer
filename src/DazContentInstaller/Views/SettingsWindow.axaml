@@ -8,7 +8,7 @@
         MinWidth="780"
         MinHeight="680"
         Title="Settings"
-        Icon="/Assets/icon.png">
+        Icon="/Assets/icon.png" CanResize="True">
     <DockPanel LastChildFill="True">
         <Border DockPanel.Dock="Bottom"
                 BorderBrush="{DynamicResource BorderBrush}"

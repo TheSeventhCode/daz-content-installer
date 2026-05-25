@@ -913,12 +913,26 @@ public class DazArchiveInstallerTests
         public IDazArchiveInstaller CreateInstaller(IDazArchiveScanner? archiveScanner = null)
         {
             var directoryService = new DirectoryService(SettingsService.CurrentSettings);
+            var destinationPathLockRegistry = new DestinationPathLockRegistry();
+            var archiveOverrideService = new ArchiveOverrideService(
+                DbContextFactory,
+                Config,
+                destinationPathLockRegistry);
             return new DazArchiveInstaller(
                 DbContextFactory,
                 SettingsService,
                 Config,
                 directoryService,
                 archiveScanner ?? new DazArchiveScanner(directoryService),
+                destinationPathLockRegistry,
+                archiveOverrideService);
+        }
+
+        public IArchiveOverrideService CreateArchiveOverrideService()
+        {
+            return new ArchiveOverrideService(
+                DbContextFactory,
+                Config,
                 new DestinationPathLockRegistry());
         }
 

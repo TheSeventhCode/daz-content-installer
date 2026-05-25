@@ -25,6 +25,8 @@ public partial class InstalledArchiveViewModel : ViewModelBase
     public int ActiveFileCount { get; init; }
     public int ReplacedFileCount { get; init; }
     public int SkippedFileCount { get; init; }
+    public int OverrideCount { get; init; }
+    public bool HasOverrides => OverrideCount > 0;
     public string? ErrorMessage { get; init; }
     public ulong ArchiveSize { get; init; }
 
