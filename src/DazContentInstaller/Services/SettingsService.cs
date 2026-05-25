@@ -113,5 +113,6 @@ public class SettingsService(
     private void ApplyDefaults()
     {
         CurrentSettings.DefaultArchiveBackupPath ??= _config.ArchiveBackupPath;
+        CurrentSettings.DefaultArchiveThumbnailPath ??= _config.ArchiveThumbnailPath;
     }
 }

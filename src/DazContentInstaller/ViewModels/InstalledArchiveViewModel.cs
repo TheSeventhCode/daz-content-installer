@@ -15,6 +15,8 @@ public partial class InstalledArchiveViewModel : ViewModelBase
     public string AssetLibraryName { get; init; } = string.Empty;
     public string? ContentRoot { get; init; }
     public string BackupPath { get; init; } = string.Empty;
+    public string? ThumbnailPath { get; init; }
+    public bool HasThumbnail => !string.IsNullOrWhiteSpace(ThumbnailPath);
     public ArchiveStatus Status { get; init; }
     public IReadOnlyList<AssetType> AssetTypes { get; init; } = [];
     public IReadOnlyList<string> Categories { get; init; } = [];

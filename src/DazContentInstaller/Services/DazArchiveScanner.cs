@@ -53,6 +53,16 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         "Thumbs.db"
     };
 
+    private static readonly HashSet<string> ThumbnailImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+        ".bmp",
+        ".gif"
+    };
+
     public static readonly Dictionary<string, AssetType> FolderToAssetType = new(StringComparer.OrdinalIgnoreCase)
     {
         ["characters"] = AssetType.Character,
@@ -149,11 +159,12 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
             .ConfigureAwait(false);
         return await ScanOpenedArchiveAsync(sourceArchive, archiveInfo.Name, archiveInfo.FullName,
             (ulong)archiveInfo.Length,
-            workingDirectory, cancellationToken).ConfigureAwait(false);
+            workingDirectory, captureTopLevelThumbnail: true, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<DazArchiveScanResult> ScanOpenedArchiveAsync(IArchive sourceArchive, string archiveName,
-        string archivePath, ulong archiveSize, string workingDirectory, CancellationToken cancellationToken)
+        string archivePath, ulong archiveSize, string workingDirectory, bool captureTopLevelThumbnail,
+        CancellationToken cancellationToken)
     {
         var files = new List<DazArchiveScanEntry>();
         var nestedArchives = new List<DazArchiveScanResult>();
@@ -161,6 +172,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         var assetTypes = new HashSet<AssetType>();
         string? contentRoot = null;
         string? displayName = null;
+        string? thumbnailArchiveRelativePath = null;
 
         foreach (var entry in sourceArchive.Entries.Where(x => !x.IsDirectory))
         {
@@ -179,6 +191,13 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
                 using var reader = new StreamReader(supplementStream);
                 displayName = DazProductMetadataReader.TryReadProductName(await reader.ReadToEndAsync(cancellationToken));
                 continue;
+            }
+
+            if (thumbnailArchiveRelativePath is null
+                && captureTopLevelThumbnail
+                && IsTopLevelThumbnailCandidate(normalizedEntryPath))
+            {
+                thumbnailArchiveRelativePath = normalizedEntryPath;
             }
 
             if (TryGetInstalledRelativePath(normalizedEntryPath, out var installedRelativePath, out var detectedRoot))
@@ -211,7 +230,8 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
                 .Run(() => ArchiveFactory.OpenArchive(nestedArchivePath), cancellationToken)
                 .ConfigureAwait(false);
             var nestedScan = await ScanOpenedArchiveAsync(nestedArchive, Path.GetFileName(normalizedEntryPath),
-                normalizedEntryPath, (ulong)nestedInfo.Length, workingDirectory, cancellationToken)
+                normalizedEntryPath, (ulong)nestedInfo.Length, workingDirectory, captureTopLevelThumbnail: false,
+                cancellationToken)
                 .ConfigureAwait(false);
             nestedArchives.Add(nestedScan);
 
@@ -226,6 +246,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
             ArchiveName = archiveName,
             ArchivePath = archivePath,
             DisplayName = displayName,
+            ThumbnailArchiveRelativePath = thumbnailArchiveRelativePath,
             ArchiveSize = archiveSize,
             ContentRoot = contentRoot,
             AssetTypes = assetTypes.OrderBy(x => x).ToList(),
@@ -314,6 +335,13 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
     public static bool ShouldIgnoreArchiveEntry(string normalizedEntryPath)
     {
         return IgnoredFileNames.Contains(Path.GetFileName(normalizedEntryPath));
+    }
+
+    public static bool IsTopLevelThumbnailCandidate(string normalizedEntryPath)
+    {
+        return !string.IsNullOrWhiteSpace(normalizedEntryPath)
+               && !normalizedEntryPath.Contains('/')
+               && ThumbnailImageExtensions.Contains(Path.GetExtension(normalizedEntryPath));
     }
 
     private static void AddClassification(string path, ISet<string> categories, ISet<AssetType> assetTypes)

@@ -12,6 +12,7 @@ public class InstallerConfigTests
 
         config.DbPath.ShouldBe(Path.Combine("/tmp/daz-appdata", "database.db"));
         config.ArchiveBackupPath.ShouldBe(Path.Combine("/tmp/daz-appdata", "archives"));
+        config.ArchiveThumbnailPath.ShouldBe(Path.Combine("/tmp/daz-appdata", "thumbnails"));
         config.AppSettingsPath.ShouldBe(Path.Combine("/tmp/daz-appdata", "settings.json"));
     }
 }

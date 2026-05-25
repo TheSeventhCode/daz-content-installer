@@ -17,15 +17,22 @@ public partial class AssetLibraryItemViewModel : ViewModelBase
     public partial string? ArchiveBackupPath { get; set; }
 
     [ObservableProperty]
+    public partial string? ArchiveThumbnailPath { get; set; }
+
+    [ObservableProperty]
     public partial bool IsDefault { get; set; }
 
-    partial void OnPathChanged(string value) => ApplyDefaultBackupPathIfUnset();
+    partial void OnPathChanged(string value) => ApplyDefaultPathsIfUnset();
 
-    public void ApplyDefaultBackupPathIfUnset()
+    public void ApplyDefaultPathsIfUnset()
     {
-        if (string.IsNullOrWhiteSpace(Path) || !string.IsNullOrWhiteSpace(ArchiveBackupPath))
+        if (string.IsNullOrWhiteSpace(Path))
             return;
 
-        ArchiveBackupPath = System.IO.Path.Combine(Path.Trim(), "backup");
+        var trimmedPath = Path.Trim();
+        if (string.IsNullOrWhiteSpace(ArchiveBackupPath))
+            ArchiveBackupPath = System.IO.Path.Combine(trimmedPath, "backup");
+        if (string.IsNullOrWhiteSpace(ArchiveThumbnailPath))
+            ArchiveThumbnailPath = System.IO.Path.Combine(trimmedPath, "thumbnails");
     }
 }

@@ -8,5 +8,6 @@ public class AppSettings
     public bool CreateBackupBeforeInstall { get; set; } = true;
     public Guid DefaultAssetLibrary { get; set; }
     public string? DefaultArchiveBackupPath { get; set; }
+    public string? DefaultArchiveThumbnailPath { get; set; }
     public string? TempWorkingDirectoryPath { get; set; }
 }

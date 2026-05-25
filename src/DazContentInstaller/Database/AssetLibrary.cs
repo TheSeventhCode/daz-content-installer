@@ -27,6 +27,12 @@ public class AssetLibrary
     public string? ArchiveBackupPath { get; set; }
 
     /// <summary>
+    /// Optional override for where top-level archive thumbnails should be stored for this library.
+    /// </summary>
+    [StringLength(4096)]
+    public string? ArchiveThumbnailPath { get; set; }
+
+    /// <summary>
     /// When was this asset library created
     /// </summary>
     public DateTime CreatedDate { get; set; } = DateTime.Now;

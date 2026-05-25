@@ -27,6 +27,8 @@ public partial class SettingsWindowViewModel(
 
     [ObservableProperty] public partial string? DefaultArchiveBackupPath { get; set; }
 
+    [ObservableProperty] public partial string? DefaultArchiveThumbnailPath { get; set; }
+
     [ObservableProperty] public partial string? TempWorkingDirectoryPath { get; set; }
 
     [ObservableProperty] public partial string StatusText { get; set; } = "Ready";
@@ -40,6 +42,7 @@ public partial class SettingsWindowViewModel(
         AutoDetectDazLibraries = settings.AutoDetectDazLibraries;
         CreateBackupBeforeInstall = settings.CreateBackupBeforeInstall;
         DefaultArchiveBackupPath = settings.DefaultArchiveBackupPath;
+        DefaultArchiveThumbnailPath = settings.DefaultArchiveThumbnailPath;
         TempWorkingDirectoryPath = settings.TempWorkingDirectoryPath;
 
         await using var dbContext = await dbContextFactory.CreateDbContextAsync();
@@ -51,6 +54,7 @@ public partial class SettingsWindowViewModel(
                      Name = library.Name,
                      Path = library.Path,
                      ArchiveBackupPath = library.ArchiveBackupPath,
+                     ArchiveThumbnailPath = library.ArchiveThumbnailPath,
                      IsDefault = library.Id == settings.DefaultAssetLibrary
                  }))
         {
@@ -104,7 +108,7 @@ public partial class SettingsWindowViewModel(
         if (!string.IsNullOrWhiteSpace(path))
         {
             SelectedAssetLibrary.Path = path;
-            SelectedAssetLibrary.ApplyDefaultBackupPathIfUnset();
+            SelectedAssetLibrary.ApplyDefaultPathsIfUnset();
         }
     }
 
@@ -121,12 +125,33 @@ public partial class SettingsWindowViewModel(
     }
 
     [RelayCommand]
+    private async Task BrowseSelectedLibraryThumbnailPathAsync()
+    {
+        if (SelectedAssetLibrary is null)
+            return;
+
+        var path = await fileDialogService.OpenFolderAsync("Select archive thumbnail folder",
+            SelectedAssetLibrary.ArchiveThumbnailPath);
+        if (!string.IsNullOrWhiteSpace(path))
+            SelectedAssetLibrary.ArchiveThumbnailPath = path;
+    }
+
+    [RelayCommand]
     private async Task BrowseDefaultArchiveBackupPathAsync()
     {
         var path = await fileDialogService.OpenFolderAsync("Select default archive backup folder",
             DefaultArchiveBackupPath);
         if (!string.IsNullOrWhiteSpace(path))
             DefaultArchiveBackupPath = path;
+    }
+
+    [RelayCommand]
+    private async Task BrowseDefaultArchiveThumbnailPathAsync()
+    {
+        var path = await fileDialogService.OpenFolderAsync("Select default archive thumbnail folder",
+            DefaultArchiveThumbnailPath);
+        if (!string.IsNullOrWhiteSpace(path))
+            DefaultArchiveThumbnailPath = path;
     }
 
     [RelayCommand]
@@ -153,7 +178,7 @@ public partial class SettingsWindowViewModel(
         SortAssetLibraries();
 
         foreach (var library in AssetLibraries)
-            library.ApplyDefaultBackupPathIfUnset();
+            library.ApplyDefaultPathsIfUnset();
 
         foreach (var library in AssetLibraries)
         {
@@ -183,6 +208,9 @@ public partial class SettingsWindowViewModel(
             entity.ArchiveBackupPath = string.IsNullOrWhiteSpace(library.ArchiveBackupPath)
                 ? null
                 : library.ArchiveBackupPath.Trim();
+            entity.ArchiveThumbnailPath = string.IsNullOrWhiteSpace(library.ArchiveThumbnailPath)
+                ? null
+                : library.ArchiveThumbnailPath.Trim();
         }
 
         settingsService.UpdateSettings(new AppSettings
@@ -193,6 +221,9 @@ public partial class SettingsWindowViewModel(
             DefaultArchiveBackupPath = string.IsNullOrWhiteSpace(DefaultArchiveBackupPath)
                 ? null
                 : DefaultArchiveBackupPath.Trim(),
+            DefaultArchiveThumbnailPath = string.IsNullOrWhiteSpace(DefaultArchiveThumbnailPath)
+                ? null
+                : DefaultArchiveThumbnailPath.Trim(),
             TempWorkingDirectoryPath = string.IsNullOrWhiteSpace(TempWorkingDirectoryPath)
                 ? null
                 : TempWorkingDirectoryPath.Trim()

@@ -71,6 +71,12 @@ public class Archive
     /// </summary>
     [StringLength(4096)]
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// File extension of the copied thumbnail, when one was extracted for the top-level archive.
+    /// </summary>
+    [StringLength(32)]
+    public string? ThumbnailFileExtension { get; set; }
     
     /// <summary>
     /// Files part of this archive

@@ -20,6 +20,7 @@ public class SettingsServiceTests
 
         File.Exists(context.Config.AppSettingsPath).ShouldBeTrue();
         service.CurrentSettings.DefaultArchiveBackupPath.ShouldBe(context.Config.ArchiveBackupPath);
+        service.CurrentSettings.DefaultArchiveThumbnailPath.ShouldBe(context.Config.ArchiveThumbnailPath);
     }
 
     [Fact]
@@ -29,7 +30,8 @@ public class SettingsServiceTests
         var expected = new AppSettings
         {
             CreateBackupBeforeInstall = false,
-            DefaultArchiveBackupPath = Path.Combine(context.RootPath, "custom-backup")
+            DefaultArchiveBackupPath = Path.Combine(context.RootPath, "custom-backup"),
+            DefaultArchiveThumbnailPath = Path.Combine(context.RootPath, "custom-thumbnails")
         };
         Directory.CreateDirectory(context.Config.AppDataPath);
         await File.WriteAllTextAsync(context.Config.AppSettingsPath, JsonSerializer.Serialize(expected));
@@ -38,6 +40,7 @@ public class SettingsServiceTests
 
         context.Service.CurrentSettings.CreateBackupBeforeInstall.ShouldBeFalse();
         context.Service.CurrentSettings.DefaultArchiveBackupPath.ShouldBe(expected.DefaultArchiveBackupPath);
+        context.Service.CurrentSettings.DefaultArchiveThumbnailPath.ShouldBe(expected.DefaultArchiveThumbnailPath);
     }
 
     [Fact]
@@ -47,7 +50,8 @@ public class SettingsServiceTests
         context.Service.UpdateSettings(new AppSettings
         {
             CreateBackupBeforeInstall = false,
-            DefaultArchiveBackupPath = Path.Combine(context.RootPath, "saved-backup")
+            DefaultArchiveBackupPath = Path.Combine(context.RootPath, "saved-backup"),
+            DefaultArchiveThumbnailPath = Path.Combine(context.RootPath, "saved-thumbnails")
         });
 
         await context.Service.SaveSettingsAsync();
@@ -57,6 +61,7 @@ public class SettingsServiceTests
         saved.ShouldNotBeNull();
         saved!.CreateBackupBeforeInstall.ShouldBeFalse();
         saved.DefaultArchiveBackupPath.ShouldBe(Path.Combine(context.RootPath, "saved-backup"));
+        saved.DefaultArchiveThumbnailPath.ShouldBe(Path.Combine(context.RootPath, "saved-thumbnails"));
     }
 
     [Fact]
@@ -69,6 +74,7 @@ public class SettingsServiceTests
         await context.Service.EnsureSettingsLoadedAsync();
 
         context.Service.CurrentSettings.DefaultArchiveBackupPath.ShouldBe(context.Config.ArchiveBackupPath);
+        context.Service.CurrentSettings.DefaultArchiveThumbnailPath.ShouldBe(context.Config.ArchiveThumbnailPath);
     }
 
     private static async Task<TestContext> CreateContextAsync()

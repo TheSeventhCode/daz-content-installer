@@ -203,6 +203,41 @@ public class DazArchiveScannerTests
     }
 
     [Fact]
+    public async Task ScanArchiveAsync_SelectsFirstTopLevelThumbnailOnly()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var archivePath = fixture.CreateArchive("content.zip",
+            ("cover.jpg", "root-image"),
+            ("later.png", "second-image"),
+            ("nested/ignored.webp", "nested-image"),
+            ("data/author/product/file.duf", "content"));
+
+        var result = await scanner.ScanArchiveAsync(archivePath);
+
+        result.ThumbnailArchiveRelativePath.ShouldBe("cover.jpg");
+    }
+
+    [Fact]
+    public async Task ScanArchiveAsync_IgnoresNestedArchiveThumbnailCandidates()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        var innerArchivePath = fixture.CreateArchive("inner.zip",
+            ("cover.png", "nested-image"),
+            ("data/author/product/file.duf", "content"));
+        var outerArchivePath = fixture.CreateArchiveWithFiles("bundle.zip",
+            ("IM0001-product.zip", innerArchivePath));
+
+        var result = await scanner.ScanArchiveAsync(outerArchivePath);
+
+        result.ThumbnailArchiveRelativePath.ShouldBeNull();
+        result.ContentBearingNestedArchives.Single().ThumbnailArchiveRelativePath.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task ScanArchiveAsync_ReadsDisplayNameFromNestedSupplementDsx()
     {
         await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();

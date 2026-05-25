@@ -89,6 +89,49 @@ public class DazArchiveInstallerTests
     }
 
     [Fact]
+    public async Task InstallArchivesAsync_CopiesTopLevelThumbnailUsingArchiveId()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var archivePath = fixture.CreateArchive("content.zip",
+            ("cover.png", "thumbnail"),
+            ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var archive = await fixture.DbContext.Archives.SingleAsync();
+        archive.ThumbnailFileExtension.ShouldBe(".png");
+        File.Exists(Path.Combine(fixture.ThumbnailPath, $"{archive.Id}.png")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_OnlyStoresThumbnailForTopLevelArchive()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var innerArchivePath = fixture.CreateArchive("inner.zip",
+            ("cover.png", "nested-thumbnail"),
+            ("data/author/product/file.txt", "hello"));
+        var outerArchivePath = fixture.CreateCompositeArchive("bundle.zip",
+            [("cover.jpg", "root-thumbnail")],
+            ("IM0001-product.zip", innerArchivePath));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(outerArchivePath)])
+            .ToListAsync();
+
+        var archives = await fixture.DbContext.Archives
+            .OrderBy(x => x.ParentArchiveId == null ? 0 : 1)
+            .ToListAsync();
+        var root = archives.Single(x => x.ParentArchiveId is null);
+        var child = archives.Single(x => x.ParentArchiveId == root.Id);
+
+        root.ThumbnailFileExtension.ShouldBe(".jpg");
+        child.ThumbnailFileExtension.ShouldBeNull();
+        File.Exists(Path.Combine(fixture.ThumbnailPath, $"{root.Id}.jpg")).ShouldBeTrue();
+        Directory.EnumerateFiles(fixture.ThumbnailPath).ShouldBe([Path.Combine(fixture.ThumbnailPath, $"{root.Id}.jpg")]);
+    }
+
+    [Fact]
     public async Task InstallArchivesAsync_PersistsMultipleNestedDisplayNames()
     {
         await using var fixture = await InstallerFixture.CreateAsync();
@@ -162,6 +205,44 @@ public class DazArchiveInstallerTests
         fixture.DbContext.ChangeTracker.Clear();
         child = await fixture.DbContext.Archives.SingleAsync(x => x.ParentArchiveId == root.Id);
         child.DisplayName.ShouldBe("Business Presentation Poses");
+    }
+
+    [Fact]
+    public async Task ReinstallArchiveAsync_RefreshesThumbnailAndRemovesOldExtension()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var originalArchivePath = fixture.CreateArchive("content.zip",
+            ("cover.png", "original-thumbnail"),
+            ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(originalArchivePath)])
+            .ToListAsync();
+
+        var root = await fixture.DbContext.Archives.SingleAsync(x => x.ParentArchiveId == null);
+        var originalThumbnailPath = Path.Combine(fixture.ThumbnailPath, $"{root.Id}.png");
+        File.Exists(originalThumbnailPath).ShouldBeTrue();
+
+        await installer.UninstallArchiveAsync(root.Id);
+        fixture.DbContext.ChangeTracker.Clear();
+
+        var replacementArchivePath = fixture.CreateArchive("replacement.zip",
+            ("cover.jpg", "replacement-thumbnail"),
+            ("data/author/product/file.txt", "hello"));
+        File.Copy(replacementArchivePath, Path.Combine(fixture.BackupPath, "content.zip"), overwrite: true);
+
+        var queueItem = new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
+        {
+            ArchiveId = root.Id
+        };
+
+        await installer.ReinstallArchiveAsync(root.Id, queueItem).ToListAsync();
+
+        fixture.DbContext.ChangeTracker.Clear();
+        root = await fixture.DbContext.Archives.SingleAsync(x => x.ParentArchiveId == null);
+        root.ThumbnailFileExtension.ShouldBe(".jpg");
+        File.Exists(originalThumbnailPath).ShouldBeFalse();
+        File.Exists(Path.Combine(fixture.ThumbnailPath, $"{root.Id}.jpg")).ShouldBeTrue();
     }
 
     [Fact]
@@ -704,6 +785,27 @@ public class DazArchiveInstallerTests
         File.Exists(installedPath).ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task ForgetArchiveAsync_RemovesStoredThumbnail()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var archivePath = fixture.CreateArchive("content.zip",
+            ("cover.png", "thumbnail"),
+            ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var root = await fixture.DbContext.Archives.SingleAsync(x => x.ParentArchiveId == null);
+        var thumbnailPath = Path.Combine(fixture.ThumbnailPath, $"{root.Id}.png");
+        File.Exists(thumbnailPath).ShouldBeTrue();
+
+        await installer.UninstallArchiveAsync(root.Id);
+        await installer.ForgetArchiveAsync(root.Id);
+
+        File.Exists(thumbnailPath).ShouldBeFalse();
+    }
+
     public sealed class InstallerFixture : IAsyncDisposable
     {
         private readonly string _rootPath;
@@ -724,6 +826,7 @@ public class DazArchiveInstallerTests
             AssetLibrary = assetLibrary;
             LibraryPath = assetLibrary.Path;
             BackupPath = config.ArchiveBackupPath;
+            ThumbnailPath = config.ArchiveThumbnailPath;
         }
 
         public ApplicationDbContext DbContext { get; }
@@ -733,6 +836,7 @@ public class DazArchiveInstallerTests
         public AssetLibrary AssetLibrary { get; }
         public string LibraryPath { get; }
         public string BackupPath { get; }
+        public string ThumbnailPath { get; }
 
         public static async Task<InstallerFixture> CreateAsync(Action<InstallerConfig>? configure = null)
         {
@@ -757,7 +861,8 @@ public class DazArchiveInstallerTests
             settingsService.UpdateSettings(new AppSettings
             {
                 CreateBackupBeforeInstall = true,
-                DefaultArchiveBackupPath = config.ArchiveBackupPath
+                DefaultArchiveBackupPath = config.ArchiveBackupPath,
+                DefaultArchiveThumbnailPath = config.ArchiveThumbnailPath
             });
 
             var assetLibrary = new AssetLibrary

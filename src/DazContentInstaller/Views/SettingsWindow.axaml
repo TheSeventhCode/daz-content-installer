@@ -46,7 +46,7 @@
                     <StackPanel Spacing="16">
                         <TextBlock Text="Library Details" Classes="sectionTitle" />
 
-                        <Grid ColumnDefinitions="140,*,Auto" RowDefinitions="Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="140,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
                             <TextBlock Text="Name" VerticalAlignment="Center" />
                             <TextBox Grid.Column="1" Text="{Binding SelectedAssetLibrary.Name}" />
                             
@@ -59,6 +59,11 @@
                             <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SelectedAssetLibrary.ArchiveBackupPath}" />
                             <Button Grid.Row="2" Grid.Column="2" Content="Browse"
                                     Command="{Binding BrowseSelectedLibraryBackupPathCommand}" />
+
+                            <TextBlock Grid.Row="3" Text="Thumbnail Path" VerticalAlignment="Center" />
+                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding SelectedAssetLibrary.ArchiveThumbnailPath}" />
+                            <Button Grid.Row="3" Grid.Column="2" Content="Browse"
+                                    Command="{Binding BrowseSelectedLibraryThumbnailPathCommand}" />
                         </Grid>
 
                         <Button Content="Set Selected As Default"
@@ -73,15 +78,20 @@
                         <CheckBox Content="Create backup before install"
                                   IsChecked="{Binding CreateBackupBeforeInstall}" />
 
-                        <Grid ColumnDefinitions="180,*,Auto" RowDefinitions="Auto,Auto">
+                        <Grid ColumnDefinitions="180,*,Auto" RowDefinitions="Auto,Auto,Auto">
                             <TextBlock Text="Default Backup Root" VerticalAlignment="Center" />
                             <TextBox Grid.Column="1" Text="{Binding DefaultArchiveBackupPath}" />
                             <Button Grid.Column="2" Content="Browse"
                                     Command="{Binding BrowseDefaultArchiveBackupPathCommand}" />
 
-                            <TextBlock Grid.Row="1" Text="Temp Working Path" VerticalAlignment="Center" />
-                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding TempWorkingDirectoryPath}" />
+                            <TextBlock Grid.Row="1" Text="Default Thumbnail Root" VerticalAlignment="Center" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DefaultArchiveThumbnailPath}" />
                             <Button Grid.Row="1" Grid.Column="2" Content="Browse"
+                                    Command="{Binding BrowseDefaultArchiveThumbnailPathCommand}" />
+
+                            <TextBlock Grid.Row="2" Text="Temp Working Path" VerticalAlignment="Center" />
+                            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding TempWorkingDirectoryPath}" />
+                            <Button Grid.Row="2" Grid.Column="2" Content="Browse"
                                     Command="{Binding BrowseTempWorkingDirectoryPathCommand}" />
                         </Grid>
 

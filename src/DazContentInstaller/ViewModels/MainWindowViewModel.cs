@@ -599,6 +599,7 @@ public partial class MainWindowViewModel(
                 Name = library.Name,
                 Path = library.Path,
                 ArchiveBackupPath = library.ArchiveBackupPath,
+                ArchiveThumbnailPath = library.ArchiveThumbnailPath,
                 IsDefault = library.Id == settingsService.CurrentSettings.DefaultAssetLibrary
             });
         }
@@ -724,6 +725,7 @@ public partial class MainWindowViewModel(
         var records = await dbContext.InstallRecords
             .Where(x => archiveIds.Contains(x.ArchiveId))
             .ToListAsync();
+        var thumbnailPath = GetDerivedThumbnailPath(archive.AssetLibrary, archive.Id, archive.ThumbnailFileExtension);
 
         return new InstalledArchiveViewModel
         {
@@ -733,6 +735,7 @@ public partial class MainWindowViewModel(
             AssetLibraryName = archive.AssetLibrary.Name,
             ContentRoot = archive.ContentRoot,
             BackupPath = GetDerivedBackupPath(archive.AssetLibrary, archive.ArchiveName),
+            ThumbnailPath = thumbnailPath is not null && File.Exists(thumbnailPath) ? thumbnailPath : null,
             Status = archive.Status,
             AssetTypes = AssetTypeCollection.Parse(archive.AssetTypes),
             Categories = ParseCategories(archive.Categories),
@@ -1054,6 +1057,20 @@ public partial class MainWindowViewModel(
             backupRoot = installerConfig.ArchiveBackupPath;
 
         return Path.Combine(backupRoot, archiveName);
+    }
+
+    private string? GetDerivedThumbnailPath(AssetLibrary assetLibrary, Guid archiveId, string? thumbnailFileExtension)
+    {
+        if (string.IsNullOrWhiteSpace(thumbnailFileExtension))
+            return null;
+
+        var thumbnailRoot = assetLibrary.ArchiveThumbnailPath;
+        if (string.IsNullOrWhiteSpace(thumbnailRoot))
+            thumbnailRoot = settingsService.CurrentSettings.DefaultArchiveThumbnailPath;
+        if (string.IsNullOrWhiteSpace(thumbnailRoot))
+            thumbnailRoot = installerConfig.ArchiveThumbnailPath;
+
+        return Path.Combine(thumbnailRoot, $"{archiveId}{thumbnailFileExtension}");
     }
 
     private static LoadedArchive CreateLoadedArchiveForReinstall(InstalledArchiveViewModel archive)

@@ -163,11 +163,16 @@ public class DazArchiveInstaller(
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        var rootArchive = await dbContext.Archives.FirstOrDefaultAsync(x => x.Id == archiveId, cancellationToken);
+        var rootArchive = await dbContext.Archives
+            .Include(x => x.AssetLibrary)
+            .FirstOrDefaultAsync(x => x.Id == archiveId, cancellationToken);
         if (rootArchive is not null)
             dbContext.Archives.Remove(rootArchive);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (rootArchive is not null)
+            await DeleteArchiveThumbnailAsync(rootArchive.AssetLibrary, rootArchive, cancellationToken).ConfigureAwait(false);
 
         var orphanedFiles = await dbContext.InstalledFiles
             .Include(x => x.InstallRecords)
@@ -490,6 +495,17 @@ public class DazArchiveInstaller(
                     yield return archive;
                 yield break;
             }
+        }
+
+        try
+        {
+            await RefreshArchiveThumbnailAsync(assetLibrary, sourceInfo.FullName, archiveEntity, scanResult,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            archiveEntity.ThumbnailFileExtension = null;
+            Console.WriteLine("Failed to refresh archive thumbnail: {0}", ex);
         }
 
         archiveEntity.Status = ArchiveStatus.Installing;
@@ -838,6 +854,40 @@ public class DazArchiveInstaller(
         await sourceStream.CopyToAsync(destinationStream, cancellationToken);
     }
 
+    private async Task RefreshArchiveThumbnailAsync(AssetLibrary assetLibrary, string sourceArchivePath,
+        Archive archiveEntity, DazArchiveScanResult scanResult, CancellationToken cancellationToken)
+    {
+        await DeleteArchiveThumbnailAsync(assetLibrary, archiveEntity, cancellationToken).ConfigureAwait(false);
+        archiveEntity.ThumbnailFileExtension = null;
+
+        var thumbnailEntryPath = scanResult.ThumbnailArchiveRelativePath;
+        if (string.IsNullOrWhiteSpace(thumbnailEntryPath))
+            return;
+
+        var thumbnailExtension = Path.GetExtension(thumbnailEntryPath);
+        if (string.IsNullOrWhiteSpace(thumbnailExtension))
+            return;
+
+        using var sourceArchive = await Task
+            .Run(() => ArchiveFactory.OpenArchive(sourceArchivePath), cancellationToken)
+            .ConfigureAwait(false);
+        var thumbnailEntry = sourceArchive.Entries.FirstOrDefault(x =>
+            !x.IsDirectory && string.Equals(NormalizeArchivePath(x.Key ?? string.Empty), thumbnailEntryPath,
+                StringComparison.OrdinalIgnoreCase));
+        if (thumbnailEntry is null)
+            return;
+
+        var thumbnailRoot = GetThumbnailRoot(assetLibrary);
+        Directory.CreateDirectory(thumbnailRoot);
+
+        var destinationPath = Path.Combine(thumbnailRoot, $"{archiveEntity.Id}{thumbnailExtension}");
+        await using var sourceStream = await thumbnailEntry.OpenEntryStreamAsync(cancellationToken).ConfigureAwait(false);
+        await using var destinationStream = File.Create(destinationPath);
+        await sourceStream.CopyToAsync(destinationStream, cancellationToken).ConfigureAwait(false);
+
+        archiveEntity.ThumbnailFileExtension = thumbnailExtension;
+    }
+
     private static async Task MarkArchiveAsFailedAsync(ApplicationDbContext dbContext, Archive archiveEntity,
         LoadedArchive archive,
         Exception ex, CancellationToken cancellationToken)
@@ -860,6 +910,31 @@ public class DazArchiveInstaller(
             return GetCanonicalPath(settingsService.CurrentSettings.DefaultArchiveBackupPath);
 
         return GetCanonicalPath(installerConfig.ArchiveBackupPath);
+    }
+
+    private string GetThumbnailRoot(AssetLibrary assetLibrary)
+    {
+        if (!string.IsNullOrWhiteSpace(assetLibrary.ArchiveThumbnailPath))
+            return GetCanonicalPath(assetLibrary.ArchiveThumbnailPath);
+
+        if (!string.IsNullOrWhiteSpace(settingsService.CurrentSettings.DefaultArchiveThumbnailPath))
+            return GetCanonicalPath(settingsService.CurrentSettings.DefaultArchiveThumbnailPath);
+
+        return GetCanonicalPath(installerConfig.ArchiveThumbnailPath);
+    }
+
+    private async Task DeleteArchiveThumbnailAsync(AssetLibrary assetLibrary, Archive archiveEntity,
+        CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrWhiteSpace(archiveEntity.ThumbnailFileExtension))
+            return;
+
+        var thumbnailPath = Path.Combine(GetThumbnailRoot(assetLibrary), $"{archiveEntity.Id}{archiveEntity.ThumbnailFileExtension}");
+        if (File.Exists(thumbnailPath))
+            File.Delete(thumbnailPath);
     }
 
     private static async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(ApplicationDbContext dbContext, Guid rootArchiveId,
