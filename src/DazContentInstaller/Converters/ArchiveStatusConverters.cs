@@ -13,6 +13,8 @@ public class ArchiveStatusToBrushConverter : IValueConverter
     {
         return value switch
         {
+            ArchiveStatus.Ready => new SolidColorBrush(Color.Parse("#22C55E")),
+            ArchiveStatus.Pending => new SolidColorBrush(Color.Parse("#64748B")),
             ArchiveStatus.Installed => new SolidColorBrush(Color.Parse("#4CAF50")),
             ArchiveStatus.Installing => new SolidColorBrush(Color.Parse("#4F7CFF")),
             ArchiveStatus.Loading => new SolidColorBrush(Color.Parse("#C48C2A")),

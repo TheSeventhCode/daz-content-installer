@@ -47,6 +47,17 @@
         <Setter Property="Padding" Value="16" />
     </Style>
 
+    <Style Selector="Border.statusBar">
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style Selector="Border.statusBar.busy">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="2" />
+        <Setter Property="Background" Value="#1A2340" />
+    </Style>
+
     <Style Selector="TextBlock.sectionTitle">
         <Setter Property="FontSize" Value="18" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -80,6 +91,10 @@
 
     <Style Selector="ProgressBar">
         <Setter Property="Height" Value="10" />
+    </Style>
+
+    <Style Selector="ProgressBar.activity">
+        <Setter Property="Height" Value="14" />
     </Style>
 
     <Style Selector="ListBox">

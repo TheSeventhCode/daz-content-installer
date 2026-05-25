@@ -133,7 +133,8 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         CancellationToken cancellationToken = default)
     {
         using var workingDirectory = directoryService.GetTempDirectory();
-        return await ScanArchiveFileAsync(archivePath, workingDirectory.DirectoryInfo.FullName, cancellationToken);
+        return await ScanArchiveFileAsync(archivePath, workingDirectory.DirectoryInfo.FullName, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static async Task<DazArchiveScanResult> ScanArchiveFileAsync(string archivePath, string workingDirectory,
@@ -143,10 +144,12 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         if (!archiveInfo.Exists)
             throw new FileNotFoundException("Archive file not found.", archivePath);
 
-        using var sourceArchive = ArchiveFactory.OpenArchive(archiveInfo.FullName);
+        using var sourceArchive = await Task
+            .Run(() => ArchiveFactory.OpenArchive(archiveInfo.FullName), cancellationToken)
+            .ConfigureAwait(false);
         return await ScanOpenedArchiveAsync(sourceArchive, archiveInfo.Name, archiveInfo.FullName,
             (ulong)archiveInfo.Length,
-            workingDirectory, cancellationToken);
+            workingDirectory, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<DazArchiveScanResult> ScanOpenedArchiveAsync(IArchive sourceArchive, string archiveName,
@@ -204,9 +207,12 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
             }
 
             var nestedInfo = new FileInfo(nestedArchivePath);
-            using var nestedArchive = ArchiveFactory.OpenArchive(nestedArchivePath);
+            using var nestedArchive = await Task
+                .Run(() => ArchiveFactory.OpenArchive(nestedArchivePath), cancellationToken)
+                .ConfigureAwait(false);
             var nestedScan = await ScanOpenedArchiveAsync(nestedArchive, Path.GetFileName(normalizedEntryPath),
-                normalizedEntryPath, (ulong)nestedInfo.Length, workingDirectory, cancellationToken);
+                normalizedEntryPath, (ulong)nestedInfo.Length, workingDirectory, cancellationToken)
+                .ConfigureAwait(false);
             nestedArchives.Add(nestedScan);
 
             foreach (var category in nestedScan.Categories)

@@ -9,7 +9,7 @@
         x:Class="DazContentInstaller.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="DazContentInstaller"
+        Title="{Binding WindowTitle}"
         CanMaximize="true">
     <Window.Resources>
         <conv:ArchiveStatusToBrushConverter x:Key="ArchiveStatusToBrushConverter" />
@@ -54,15 +54,47 @@
             </Grid>
         </Border>
 
-        <Border DockPanel.Dock="Bottom" Classes="card" Padding="12" Margin="0,16,0,0">
-            <Grid ColumnDefinitions="2*,3*" RowDefinitions="Auto,Auto">
-                <TextBlock Text="{Binding StatusText}" Classes="caption" />
-                <TextBlock Grid.Row="1" Text="{Binding ProgressPercent, StringFormat={}{0:0}%}" Classes="caption" />
-                <ProgressBar Grid.Column="1"
+        <Border DockPanel.Dock="Bottom"
+                Classes="card statusBar"
+                Classes.busy="{Binding IsBusy}"
+                Padding="12"
+                Margin="0,16,0,0">
+            <Grid ColumnDefinitions="Auto,2*,3*" RowDefinitions="Auto,Auto">
+                <Border Grid.RowSpan="2"
+                        IsVisible="{Binding IsBusy}"
+                        Background="{DynamicResource AccentBrush}"
+                        CornerRadius="999"
+                        Padding="10,6"
+                        Margin="0,0,12,0"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="WORKING"
+                               Foreground="White"
+                               FontSize="11"
+                               FontWeight="Bold" />
+                </Border>
+
+                <TextBlock Grid.Column="1"
+                           Text="{Binding StatusText}"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+                <TextBlock Grid.Column="1"
+                           Grid.Row="1"
+                           Text="{Binding ProgressPercent, StringFormat={}{0:0}%}"
+                           Classes="caption"
+                           IsVisible="{Binding !ShowIndeterminateProgress}" />
+                <TextBlock Grid.Column="1"
+                           Grid.Row="1"
+                           Text="Preparing…"
+                           Classes="caption"
+                           IsVisible="{Binding ShowIndeterminateProgress}" />
+
+                <ProgressBar Grid.Column="2"
                              Grid.RowSpan="2"
+                             Classes="activity"
                              Minimum="0"
                              Maximum="100"
-                             Value="{Binding ProgressPercent}" />
+                             Value="{Binding ProgressPercent}"
+                             IsIndeterminate="{Binding ShowIndeterminateProgress}" />
             </Grid>
         </Border>
 
@@ -92,8 +124,9 @@
                                                     Background="{Binding ArchiveStatus, Converter={StaticResource ArchiveStatusToBrushConverter}}"
                                                     CornerRadius="999"
                                                     Padding="8,4">
-                                                <TextBlock Text="{Binding ArchiveStatus}"
+                                                <TextBlock Text="{Binding StatusBadgeText}"
                                                            FontSize="11"
+                                                           Foreground="White"
                                                            VerticalAlignment="Center"
                                                            TextAlignment="Center" />
                                             </Border>
@@ -207,6 +240,7 @@
                                                     Padding="8,4">
                                                 <TextBlock Text="{Binding Status}"
                                                            FontSize="11"
+                                                           Foreground="White"
                                                            VerticalAlignment="Center"
                                                            TextAlignment="Center" />
                                             </Border>

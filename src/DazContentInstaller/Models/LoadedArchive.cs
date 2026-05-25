@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using DazContentInstaller.Extensions;
 using DazContentInstaller.Database;
@@ -18,7 +19,17 @@ public partial class LoadedArchive : ViewModelBase
     public ObservableCollection<string> Categories { get; } = [];
 
     [ObservableProperty]
-    public partial ArchiveStatus ArchiveStatus { get; set; } = ArchiveStatus.Ready;
+    public partial ArchiveStatus ArchiveStatus { get; set; } = ArchiveStatus.Pending;
+
+    public string StatusBadgeText => ArchiveStatus switch
+    {
+        ArchiveStatus.Pending => "Queued",
+        ArchiveStatus.Loading => "Scanning",
+        ArchiveStatus.Installing => "Installing",
+        _ => ArchiveStatus.ToString()
+    };
+
+    partial void OnArchiveStatusChanged(ArchiveStatus value) => OnPropertyChanged(nameof(StatusBadgeText));
 
     private string? _currentFile;
     public string? CurrentFile
@@ -96,14 +107,18 @@ public partial class LoadedArchive : ViewModelBase
     }
 
     public string FileSize => FileSizeFormatter.Format(FileSizeBytes);
-    public string ScanSummary => TotalFiles == 0
-        ? "No installable DAZ content found yet"
-        : $"{TotalFiles:N0} file(s), {FileSizeFormatter.Format(InstallableSizeBytes)}";
+    public string ScanSummary => CachedScanResult is null
+        ? ArchiveStatus == ArchiveStatus.Pending ? "Queued for scan" : "Scanning…"
+        : TotalFiles == 0
+            ? "No installable DAZ content found yet"
+            : $"{TotalFiles:N0} file(s), {FileSizeFormatter.Format(InstallableSizeBytes)}";
 
     public ObservableCollection<NestedArchiveSummary> SubArchives { get; } = [];
     public bool HasSubArchives => SubArchives.Count > 0;
 
     public DazArchiveScanResult? CachedScanResult { get; private set; }
+
+    private bool _suppressInstallProgressNotifications;
 
     public LoadedArchive(string archivePath)
     {
@@ -111,7 +126,7 @@ public partial class LoadedArchive : ViewModelBase
         DisplayName = Path.GetFileName(archivePath);
         var fileInfo = new FileInfo(archivePath);
         FileSizeBytes = fileInfo.Exists ? (ulong)fileInfo.Length : 0UL;
-        StatusText = "Ready to scan";
+        StatusText = "Waiting to scan";
     }
 
     public void ApplyScan(DazArchiveScanResult scan)
@@ -127,10 +142,59 @@ public partial class LoadedArchive : ViewModelBase
         foreach (var category in scan.Categories)
             Categories.Add(category);
         RefreshSubArchives(scan);
+        OnPropertyChanged(nameof(ScanSummary));
         ArchiveStatus = TotalFiles == 0 ? ArchiveStatus.Error : ArchiveStatus.Ready;
         ErrorMessage = TotalFiles == 0 ? "No DAZ content directories were found in this archive." : null;
         StatusText = TotalFiles == 0 ? ErrorMessage : "Scanned and ready to install";
         ProgressPercent = TotalFiles == 0 ? 0 : 100;
+    }
+
+    public void SetInstallProgressSilently(
+        ArchiveStatus status,
+        string? statusText,
+        string? errorMessage,
+        string? currentFile,
+        int processedFiles,
+        int totalFiles,
+        double progressPercent)
+    {
+        _suppressInstallProgressNotifications = true;
+        try
+        {
+            ArchiveStatus = status;
+            StatusText = statusText;
+            ErrorMessage = errorMessage;
+            CurrentFile = currentFile;
+            ProcessedFiles = processedFiles;
+            TotalFiles = totalFiles;
+            ProgressPercent = progressPercent;
+        }
+        finally
+        {
+            _suppressInstallProgressNotifications = false;
+        }
+    }
+
+    public void RefreshInstallProgressBindings()
+    {
+        OnPropertyChanged(nameof(ArchiveStatus));
+        OnPropertyChanged(nameof(StatusBadgeText));
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(ErrorMessage));
+        OnPropertyChanged(nameof(CurrentFile));
+        OnPropertyChanged(nameof(ProcessedFiles));
+        OnPropertyChanged(nameof(TotalFiles));
+        OnPropertyChanged(nameof(ProgressPercent));
+        OnPropertyChanged(nameof(StatusBadgeText));
+        OnPropertyChanged(nameof(ScanSummary));
+    }
+
+    public void RefreshQueueItemBindings()
+    {
+        RefreshInstallProgressBindings();
+        OnPropertyChanged(nameof(DisplayName));
+        OnPropertyChanged(nameof(ContentRoot));
+        OnPropertyChanged(nameof(HasSubArchives));
     }
 
     public void ApplyScanMetadata(DazArchiveScanResult scan)
@@ -151,5 +215,24 @@ public partial class LoadedArchive : ViewModelBase
         }
 
         OnPropertyChanged(nameof(HasSubArchives));
+    }
+
+    protected override void OnPropertyChanged(PropertyChangedEventArgs e)
+    {
+        if (_suppressInstallProgressNotifications
+            && e.PropertyName is nameof(ArchiveStatus)
+                or nameof(StatusText)
+                or nameof(ErrorMessage)
+                or nameof(CurrentFile)
+                or nameof(ProcessedFiles)
+                or nameof(TotalFiles)
+                or nameof(ProgressPercent)
+                or nameof(ScanSummary)
+                or nameof(StatusBadgeText))
+        {
+            return;
+        }
+
+        base.OnPropertyChanged(e);
     }
 }

@@ -25,6 +25,9 @@ public partial class MainWindowViewModel(
     IAssetLibraryStatisticsService assetLibraryStatisticsService)
     : ViewModelBase
 {
+    private const int CollectionUpdateBatchSize = 50;
+    private static readonly TimeSpan UiProgressUpdateInterval = TimeSpan.FromMilliseconds(100);
+
     public const string AllCategoriesLabel = "All categories";
 
     public ObservableCollection<LoadedArchive> QueueArchives { get; } = [];
@@ -39,6 +42,7 @@ public partial class MainWindowViewModel(
     public ObservableCollection<ArchiveFileGroupViewModel> FilteredSelectedArchiveFileGroups { get; } = [];
 
     private bool _selectionHandlersRegistered;
+    private readonly ProgressUpdateThrottler _uiProgressThrottler = new(UiProgressUpdateInterval);
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallQueueCommand))]
@@ -46,11 +50,23 @@ public partial class MainWindowViewModel(
     [NotifyCanExecuteChangedFor(nameof(ReinstallSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ForgetSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveQueuedArchivesCommand))]
-    private partial bool IsBusy { get; set; }
+    public partial bool IsBusy { get; set; }
 
     [ObservableProperty] public partial string StatusText { get; set; } = "Ready";
 
     [ObservableProperty] public partial double ProgressPercent { get; set; }
+
+    public string WindowTitle => IsBusy ? "DazContentInstaller — Working…" : "DazContentInstaller";
+
+    public bool ShowIndeterminateProgress => IsBusy && ProgressPercent <= 0;
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(WindowTitle));
+        OnPropertyChanged(nameof(ShowIndeterminateProgress));
+    }
+
+    partial void OnProgressPercentChanged(double value) => OnPropertyChanged(nameof(ShowIndeterminateProgress));
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallQueueCommand))]
@@ -209,6 +225,7 @@ public partial class MainWindowViewModel(
 
         IsBusy = true;
         ProgressPercent = 0;
+        _uiProgressThrottler.ShouldUpdate(force: true);
         var total = addedArchives.Count;
         var completedScans = 0;
         var scanLock = new object();
@@ -254,11 +271,14 @@ public partial class MainWindowViewModel(
                     }
 
                     var (percent, status) = QueueProgressAggregator.ComputeScanProgress(done, total);
-                    await UiThread.RunAsync(() =>
+                    if (_uiProgressThrottler.ShouldUpdate(force: done == total))
                     {
-                        ProgressPercent = percent;
-                        StatusText = status;
-                    });
+                        await UiThread.RunAsync(() =>
+                        {
+                            ProgressPercent = percent;
+                            StatusText = status;
+                        });
+                    }
 
                     scanSemaphore.Release();
                 }
@@ -284,6 +304,7 @@ public partial class MainWindowViewModel(
 
         IsBusy = true;
         ProgressPercent = 0;
+        _uiProgressThrottler.ShouldUpdate(force: true);
         try
         {
             var installQueue = QueueArchives
@@ -299,9 +320,7 @@ public partial class MainWindowViewModel(
             var promotedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             await foreach (var progress in archiveInstaller.InstallArchivesAsync(SelectedAssetLibrary.Id, installQueue))
             {
-                var (percent, status) = QueueProgressAggregator.ComputeInstallProgress(installQueue);
-                StatusText = status;
-                ProgressPercent = percent;
+                UpdateInstallProgressUi(installQueue, progress);
 
                 if (progress.ArchiveStatus == ArchiveStatus.Installed
                     && promotedPaths.Add(progress.ArchivePath))
@@ -310,10 +329,8 @@ public partial class MainWindowViewModel(
                 }
             }
 
+            UpdateInstallProgressUi(installQueue, force: true);
             InstallQueueCommand.NotifyCanExecuteChanged();
-
-            await LoadLibrariesAsync();
-            await RefreshSelectedAssetLibrarySummaryAsync();
             SortQueueArchives();
             StatusText = "Install queue finished";
         }
@@ -367,12 +384,18 @@ public partial class MainWindowViewModel(
 
         IsBusy = true;
         ProgressPercent = 0;
+        _uiProgressThrottler.ShouldUpdate(force: true);
         try
         {
-            foreach (var archive in toUninstall)
+            var total = toUninstall.Count;
+            for (var index = 0; index < toUninstall.Count; index++)
             {
-                StatusText = $"Uninstalling {archive.EffectiveDisplayName}";
+                var archive = toUninstall[index];
+                if (_uiProgressThrottler.ShouldUpdate(force: index == total - 1))
+                    StatusText = $"Uninstalling {archive.EffectiveDisplayName} ({index + 1}/{total})";
+
                 await archiveInstaller.UninstallArchiveAsync(archive.Id);
+                await Task.Yield();
             }
 
             await RefreshInstalledArchivesAsync();
@@ -400,6 +423,7 @@ public partial class MainWindowViewModel(
 
         IsBusy = true;
         ProgressPercent = 0;
+        _uiProgressThrottler.ShouldUpdate(force: true);
         SelectedInstalledArchives.Clear();
 
         var queueItems = new List<LoadedArchive>();
@@ -430,11 +454,9 @@ public partial class MainWindowViewModel(
 
                 await foreach (var progress in archiveInstaller.ReinstallArchiveAsync(archive.Id, queueItem))
                 {
-                    var (percent, status) = QueueProgressAggregator.ComputeInstallProgress(queueItems);
-                    StatusText = status;
-                    ProgressPercent = percent;
+                    UpdateInstallProgressUi(queueItems, progress);
 
-                    if (progress.ArchiveStatus is ArchiveStatus.Installed or ArchiveStatus.Error
+                    if (progress.ArchiveStatus == ArchiveStatus.Installed
                         && promotedPaths.Add(progress.ArchivePath))
                     {
                         await PromoteInstalledArchiveAsync(progress);
@@ -442,6 +464,7 @@ public partial class MainWindowViewModel(
                 }
             }
 
+            UpdateInstallProgressUi(queueItems, force: true);
             await LoadSelectedArchiveDetailsAsync(SelectedInstalledArchive);
             SortQueueArchives();
             StatusText = queueItems.All(x => x.ArchiveStatus == ArchiveStatus.Installed)
@@ -551,8 +574,6 @@ public partial class MainWindowViewModel(
     private async Task RefreshInstalledArchivesAsync()
     {
         var selectedIds = SelectedInstalledArchives.Select(x => x.Id).ToHashSet();
-        InstalledArchives.Clear();
-        SelectedInstalledArchives.Clear();
 
         await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var topLevelArchives = await dbContext.Archives
@@ -563,10 +584,24 @@ public partial class MainWindowViewModel(
                         (SelectedAssetLibrary == null || x.AssetLibraryId == SelectedAssetLibrary.Id))
             .ToListAsync();
 
-        foreach (var archive in topLevelArchives.OrderBy(x => ArchiveDisplayName.GetEffectiveDisplayName(x.ArchiveName, x.DisplayName), StringComparer.OrdinalIgnoreCase))
+        var viewModels = new List<InstalledArchiveViewModel>();
+        foreach (var archive in topLevelArchives.OrderBy(x =>
+                     ArchiveDisplayName.GetEffectiveDisplayName(x.ArchiveName, x.DisplayName),
+                     StringComparer.OrdinalIgnoreCase))
         {
-            var viewModel = await CreateInstalledArchiveViewModelAsync(dbContext, archive);
-            InstalledArchives.Add(viewModel);
+            viewModels.Add(await CreateInstalledArchiveViewModelAsync(dbContext, archive));
+            if (viewModels.Count % CollectionUpdateBatchSize == 0)
+                await Task.Yield();
+        }
+
+        InstalledArchives.Clear();
+        SelectedInstalledArchives.Clear();
+
+        for (var index = 0; index < viewModels.Count; index++)
+        {
+            InstalledArchives.Add(viewModels[index]);
+            if (index % CollectionUpdateBatchSize == CollectionUpdateBatchSize - 1)
+                await Task.Yield();
         }
 
         foreach (var archive in InstalledArchives.Where(x => selectedIds.Contains(x.Id)))
@@ -578,6 +613,21 @@ public partial class MainWindowViewModel(
         RefreshAvailableCategoryFilters();
         ApplyInstalledArchiveFilter();
         await RefreshSelectedAssetLibrarySummaryAsync();
+    }
+
+    private void UpdateInstallProgressUi(IReadOnlyList<LoadedArchive> installQueue, LoadedArchive? progress = null,
+        bool force = false)
+    {
+        var isTerminal = progress?.ArchiveStatus is ArchiveStatus.Installed or ArchiveStatus.Error
+            or ArchiveStatus.Duplicate;
+        if (!_uiProgressThrottler.ShouldUpdate(force || isTerminal))
+            return;
+
+        progress?.RefreshQueueItemBindings();
+
+        var (percent, status) = QueueProgressAggregator.ComputeInstallProgress(installQueue);
+        StatusText = status;
+        ProgressPercent = percent;
     }
 
     private async Task PromoteInstalledArchiveAsync(LoadedArchive loadedArchive)
@@ -599,6 +649,8 @@ public partial class MainWindowViewModel(
 
         await UiThread.RunAsync(() =>
         {
+            loadedArchive.RefreshQueueItemBindings();
+
             var queued = QueueArchives.FirstOrDefault(x =>
                 string.Equals(x.ArchivePath, loadedArchive.ArchivePath, StringComparison.OrdinalIgnoreCase));
             if (queued is not null)
@@ -740,13 +792,24 @@ public partial class MainWindowViewModel(
                     IsOverridden = record.HasBeenOverriden,
                     InstalledAt = record.InstalledAt
                 });
+
+                if (group.Files.Count % CollectionUpdateBatchSize == 0)
+                    await Task.Yield();
             }
 
             groups.Add(group);
         }
 
-        foreach (var group in ArchiveFileGroupBuilder.Build(groups, archive.Id, archive.ArchiveName, archive.DisplayName))
-            SelectedArchiveFileGroups.Add(group);
+        var builtGroups = ArchiveFileGroupBuilder
+            .Build(groups, archive.Id, archive.ArchiveName, archive.DisplayName)
+            .ToList();
+
+        for (var index = 0; index < builtGroups.Count; index++)
+        {
+            SelectedArchiveFileGroups.Add(builtGroups[index]);
+            if (index % CollectionUpdateBatchSize == CollectionUpdateBatchSize - 1)
+                await Task.Yield();
+        }
 
         ApplyArchiveFileFilter();
         OnPropertyChanged(nameof(ArchiveFileListSummary));
