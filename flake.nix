@@ -91,6 +91,8 @@
           nuget-to-json ./.nuget-packages > deps.json
           rm -rf ./.nuget-packages
         '';
+        appIcon = ./src/DazContentInstaller/Assets/icon.png;
+        appIconName = "daz-content-installer";
         writeRiderEnv = pkgs.writeShellScriptBin "write-dci-rider-env" ''
           out_file="''${1:-.rider.env}"
 
@@ -108,7 +110,7 @@ EOF
           genericName = "DAZ Content Installer";
           comment = "Avalonia desktop installer for third-party DAZ content";
           exec = "DazContentInstaller";
-          icon = "daz-content-installer";
+          icon = appIconName;
           startupWMClass = "DazContentInstaller";
           terminal = false;
           categories = [ "Utility" ];
@@ -145,8 +147,8 @@ EOF
           executables = [ "DazContentInstaller" ];
           runtimeDeps = runtimeLibs;
           postInstall = ''
-            install -Dm644 "$NIX_BUILD_TOP/source/src/DazContentInstaller/Assets/avalonia-logo.ico" \
-              "$out/share/icons/hicolor/256x256/apps/daz-content-installer.ico"
+            install -Dm644 ${appIcon} \
+              "$out/share/icons/hicolor/256x256/apps/${appIconName}.png"
           '';
           postFixup = ''
             wrapProgram "$out/bin/DazContentInstaller" ${lib.escapeShellArgs wrapperArgs}
@@ -157,6 +159,7 @@ EOF
             homepage = "https://github.com/TheSeventhCode/daz-content-installer";
             license = licenses.gpl3Only;
             mainProgram = "DazContentInstaller";
+            icon = "share/icons/hicolor/256x256/apps/${appIconName}.png";
             platforms = platforms.linux;
           };
         };
