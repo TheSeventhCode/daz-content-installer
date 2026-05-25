@@ -649,7 +649,8 @@ public partial class MainWindowViewModel(
                         (SelectedAssetLibrary == null || x.AssetLibraryId == SelectedAssetLibrary.Id))
             .ToListAsync();
 
-        var countsByRootArchiveId = await BuildInstallRecordCountsByRootArchiveAsync(dbContext, topLevelArchives);
+        var (countsByRootArchiveId, descendantSearchSegmentsByRootArchiveId) =
+            await BuildInstalledArchiveTreeDataAsync(dbContext, topLevelArchives);
         var rootArchiveIds = topLevelArchives.Select(x => x.Id).ToList();
         var overrideCountsByRootArchiveId = rootArchiveIds.Count == 0
             ? []
@@ -668,7 +669,9 @@ public partial class MainWindowViewModel(
             countsByRootArchiveId.TryGetValue(archive.Id, out var counts);
             counts ??= InstallRecordCounts.Empty;
             overrideCountsByRootArchiveId.TryGetValue(archive.Id, out var overrideCount);
-            viewModels.Add(CreateInstalledArchiveViewModel(archive, counts, overrideCount));
+            descendantSearchSegmentsByRootArchiveId.TryGetValue(archive.Id, out var descendantSearchSegments);
+            viewModels.Add(CreateInstalledArchiveViewModel(
+                archive, counts, overrideCount, descendantSearchSegments ?? []));
             if (viewModels.Count % CollectionUpdateBatchSize == 0)
                 await Task.Yield();
         }
@@ -726,7 +729,9 @@ public partial class MainWindowViewModel(
             dbContext, archive.AssetLibraryId, archive.Id);
         var counts = await installRecordStatisticsService.GetCountsForArchivesAsync(dbContext, archiveIds);
         var overrideCount = await archiveOverrideService.GetOverrideCountAsync(archive.Id);
-        var viewModel = CreateInstalledArchiveViewModel(archive, counts, overrideCount);
+        var descendantSearchSegments = await LoadDescendantSearchSegmentsAsync(
+            dbContext, archive.AssetLibraryId, archive.Id);
+        var viewModel = CreateInstalledArchiveViewModel(archive, counts, overrideCount, descendantSearchSegments);
 
         await UiThread.RunAsync(() =>
         {
@@ -762,18 +767,22 @@ public partial class MainWindowViewModel(
         await RefreshSelectedAssetLibrarySummaryAsync();
     }
 
-    private async Task<Dictionary<Guid, InstallRecordCounts>> BuildInstallRecordCountsByRootArchiveAsync(
-        ApplicationDbContext dbContext, IReadOnlyList<Archive> topLevelArchives)
+    private async Task<(Dictionary<Guid, InstallRecordCounts> CountsByRoot,
+            Dictionary<Guid, IReadOnlyList<InstalledArchiveSearchSegment>> DescendantSegmentsByRoot)>
+        BuildInstalledArchiveTreeDataAsync(
+            ApplicationDbContext dbContext, IReadOnlyList<Archive> topLevelArchives)
     {
         if (topLevelArchives.Count == 0)
-            return [];
+            return ([], []);
 
         var libraryIds = topLevelArchives.Select(x => x.AssetLibraryId).Distinct().ToList();
-        var parentById = await dbContext.Archives
+        var archivesInLibraries = await dbContext.Archives
             .AsNoTracking()
             .Where(x => libraryIds.Contains(x.AssetLibraryId))
-            .Select(x => new { x.Id, x.ParentArchiveId })
-            .ToDictionaryAsync(x => x.Id, x => x.ParentArchiveId);
+            .ToListAsync();
+
+        var parentById = archivesInLibraries.ToDictionary(x => x.Id, x => x.ParentArchiveId);
+        var archiveById = archivesInLibraries.ToDictionary(x => x.Id);
 
         var treeIdsByRoot = new Dictionary<Guid, HashSet<Guid>>();
         var allTreeArchiveIds = new HashSet<Guid>();
@@ -788,16 +797,45 @@ public partial class MainWindowViewModel(
             await installRecordStatisticsService.GetCountsGroupedByArchiveIdAsync(dbContext, allTreeArchiveIds);
 
         var countsByRootArchiveId = new Dictionary<Guid, InstallRecordCounts>(topLevelArchives.Count);
+        var descendantSegmentsByRootArchiveId =
+            new Dictionary<Guid, IReadOnlyList<InstalledArchiveSearchSegment>>(topLevelArchives.Count);
         foreach (var (rootArchiveId, treeIds) in treeIdsByRoot)
+        {
             countsByRootArchiveId[rootArchiveId] = ArchiveTreeResolver.RollUpCounts(treeIds, countsByArchiveId);
+            descendantSegmentsByRootArchiveId[rootArchiveId] = treeIds
+                .Where(id => id != rootArchiveId)
+                .Select(id => InstalledArchiveSearchSegment.FromArchive(archiveById[id]))
+                .ToList();
+        }
 
-        return countsByRootArchiveId;
+        return (countsByRootArchiveId, descendantSegmentsByRootArchiveId);
+    }
+
+    private static async Task<IReadOnlyList<InstalledArchiveSearchSegment>> LoadDescendantSearchSegmentsAsync(
+        ApplicationDbContext dbContext, Guid assetLibraryId, Guid rootArchiveId,
+        CancellationToken cancellationToken = default)
+    {
+        var archivesInLibrary = await dbContext.Archives
+            .AsNoTracking()
+            .Where(x => x.AssetLibraryId == assetLibraryId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var parentById = archivesInLibrary.ToDictionary(x => x.Id, x => x.ParentArchiveId);
+        var archiveById = archivesInLibrary.ToDictionary(x => x.Id);
+        var treeIds = ArchiveTreeResolver.GetTreeIds(parentById, rootArchiveId);
+
+        return treeIds
+            .Where(id => id != rootArchiveId)
+            .Select(id => InstalledArchiveSearchSegment.FromArchive(archiveById[id]))
+            .ToList();
     }
 
     private InstalledArchiveViewModel CreateInstalledArchiveViewModel(
         Archive archive,
         InstallRecordCounts counts,
-        int overrideCount = 0)
+        int overrideCount = 0,
+        IReadOnlyList<InstalledArchiveSearchSegment>? descendantSearchSegments = null)
     {
         var thumbnailPath = GetDerivedThumbnailPath(archive.AssetLibrary, archive.Id, archive.ThumbnailFileExtension);
 
@@ -820,7 +858,8 @@ public partial class MainWindowViewModel(
             ReplacedFileCount = counts.ReplacedFileCount,
             SkippedFileCount = counts.SkippedFileCount,
             OverrideCount = overrideCount,
-            ErrorMessage = archive.ErrorMessage
+            ErrorMessage = archive.ErrorMessage,
+            DescendantSearchSegments = descendantSearchSegments ?? []
         };
     }
 
@@ -1063,18 +1102,8 @@ public partial class MainWindowViewModel(
         }
     }
 
-    private static bool MatchesInstalledArchiveSearch(InstalledArchiveViewModel archive, string query)
-    {
-        return Contains(archive.EffectiveDisplayName, query)
-               || Contains(archive.ArchiveName, query)
-               || Contains(archive.DisplayName, query)
-               || Contains(archive.AssetLibraryName, query)
-               || Contains(archive.BackupPath, query)
-               || Contains(archive.ContentRoot, query)
-               || Contains(archive.Status.ToString(), query)
-               || archive.Categories.Any(category => Contains(category, query))
-               || archive.AssetTypes.Any(assetType => Contains(assetType.ToString(), query));
-    }
+    private static bool MatchesInstalledArchiveSearch(InstalledArchiveViewModel archive, string query) =>
+        InstalledArchiveSearchMatcher.Matches(archive, query);
 
     private static bool MatchesQueueArchiveSearch(LoadedArchive archive, string query)
     {

@@ -29,6 +29,7 @@ public partial class InstalledArchiveViewModel : ViewModelBase
     public bool HasOverrides => OverrideCount > 0;
     public string? ErrorMessage { get; init; }
     public ulong ArchiveSize { get; init; }
+    public IReadOnlyList<InstalledArchiveSearchSegment> DescendantSearchSegments { get; init; } = [];
 
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
