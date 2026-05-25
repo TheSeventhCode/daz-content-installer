@@ -1,0 +1,49 @@
+using System;
+using System.Globalization;
+using Avalonia.Data.Converters;
+using Avalonia.Media;
+using DazContentInstaller.Database;
+using DazContentInstaller.Extensions;
+
+namespace DazContentInstaller.Converters;
+
+public class ArchiveStatusToBrushConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value switch
+        {
+            ArchiveStatus.Installed => new SolidColorBrush(Color.Parse("#4CAF50")),
+            ArchiveStatus.Installing => new SolidColorBrush(Color.Parse("#4F7CFF")),
+            ArchiveStatus.Loading => new SolidColorBrush(Color.Parse("#C48C2A")),
+            ArchiveStatus.Duplicate => new SolidColorBrush(Color.Parse("#7D8796")),
+            ArchiveStatus.Uninstalled => new SolidColorBrush(Color.Parse("#7D8796")),
+            ArchiveStatus.Error => new SolidColorBrush(Color.Parse("#D05C5C")),
+            _ => new SolidColorBrush(Color.Parse("#A9B5C4"))
+        };
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+public class FileSizeConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value switch
+        {
+            ulong bytes => FileSizeFormatter.Format(bytes),
+            long bytes when bytes >= 0 => FileSizeFormatter.Format((ulong)bytes),
+            int bytes when bytes >= 0 => FileSizeFormatter.Format((ulong)bytes),
+            _ => "0 B"
+        };
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}

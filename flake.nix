@@ -114,6 +114,7 @@ EOF
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             dotnet-sdk_10
+            dotnet-ef
             patchelf
             nuget-to-json
             updateDepsCommand

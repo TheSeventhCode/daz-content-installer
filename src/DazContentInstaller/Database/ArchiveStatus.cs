@@ -7,5 +7,6 @@ public enum ArchiveStatus
     Installed,
     Installing,
     Duplicate,
-    Error
+    Error,
+    Uninstalled
 }

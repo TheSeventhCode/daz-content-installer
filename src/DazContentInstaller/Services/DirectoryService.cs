@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using DazContentInstaller.Models;
 
 namespace DazContentInstaller.Services;
 
@@ -26,8 +27,35 @@ public interface IDirectoryService
 
 public class DirectoryService : IDirectoryService
 {
+    private readonly Func<AppSettings> _settingsProvider;
+
+    public DirectoryService() : this(() => new AppSettings())
+    {
+    }
+
+    public DirectoryService(AppSettings appSettings) : this(() => appSettings)
+    {
+    }
+
+    public DirectoryService(SettingsService settingsService) : this(() => settingsService.CurrentSettings)
+    {
+    }
+
+    private DirectoryService(Func<AppSettings> settingsProvider)
+    {
+        _settingsProvider = settingsProvider;
+    }
+
     public TempDirectory GetTempDirectory()
     {
+        var appSettings = _settingsProvider();
+        if (!string.IsNullOrWhiteSpace(appSettings.TempWorkingDirectoryPath))
+        {
+            Directory.CreateDirectory(appSettings.TempWorkingDirectoryPath);
+            var directory = Path.Combine(appSettings.TempWorkingDirectoryPath, $"DazContentInstaller-{Guid.NewGuid():N}");
+            return new TempDirectory(Directory.CreateDirectory(directory));
+        }
+
         return new TempDirectory(Directory.CreateTempSubdirectory("DazContentInstaller"));
     }
 }

@@ -20,7 +20,7 @@ public class InstallRecord
     /// <summary>
     /// When a new installation record was added
     /// </summary>
-    public DateTimeOffset InstalledAt { get; set; } = DateTimeOffset.Now;
+    public DateTime InstalledAt { get; set; } = DateTime.Now;
 
     /// <summary>
     /// If a newer installation has overriden this version

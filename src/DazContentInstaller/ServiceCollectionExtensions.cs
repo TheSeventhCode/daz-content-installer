@@ -3,6 +3,7 @@ using System.IO;
 using DazContentInstaller.Database;
 using DazContentInstaller.Services;
 using DazContentInstaller.ViewModels;
+using DazContentInstaller.Views;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,22 +17,34 @@ public static class ServiceCollectionExtensions
     {
         var appInfo = new AppInfoService();
         services.AddSingleton(appInfo);
-        
+        services.AddSingleton<IAppInfoService>(appInfo);
+
         var appDataPath = AppDataPathResolver.ResolveAppDataPath(AppDomain.CurrentDomain.BaseDirectory, appInfo.IsDevelopmentEnvironment());
         Directory.CreateDirectory(appDataPath);
 
         var config = new InstallerConfig { AppDataPath = appDataPath };
 
-        services.AddSingleton<IAppInfoService, AppInfoService>();
-
+        services.AddSingleton(config);
         services.Configure<InstallerConfig>(o => o.AppDataPath = appDataPath);
 
         services.AddDbContext<ApplicationDbContext>(o => o.UseSqlite($"Data Source={config.DbPath}"),
             ServiceLifetime.Singleton);
         services.AddSingleton<SettingsService>();
+        services.AddSingleton<IDirectoryService>(sp => new DirectoryService(sp.GetRequiredService<SettingsService>()));
+        services.AddSingleton<IFileDialogService, FileDialogService>();
+        services.AddSingleton<IDazArchiveScanner, DazArchiveScanner>();
+        services.AddSingleton<IAssetLibraryStatisticsService, AssetLibraryStatisticsService>();
+        services.AddTransient<IDazArchiveInstaller>(sp =>
+            new DazArchiveInstaller(
+                sp.GetRequiredService<ApplicationDbContext>(),
+                sp.GetRequiredService<SettingsService>(),
+                sp.GetRequiredService<InstallerConfig>(),
+                sp.GetRequiredService<IDirectoryService>(),
+                sp.GetRequiredService<IDazArchiveScanner>()));
 
         services.AddTransient<MainWindowViewModel>();
         services.AddTransient<SettingsWindowViewModel>();
+        services.AddTransient<SettingsWindow>();
         
         return services;
     }

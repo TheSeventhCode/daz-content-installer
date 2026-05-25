@@ -1,6 +1,630 @@
-﻿namespace DazContentInstaller.ViewModels;
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using DazContentInstaller.Database;
+using DazContentInstaller.Extensions;
+using DazContentInstaller.Models;
+using DazContentInstaller.Services;
+using Microsoft.EntityFrameworkCore;
 
-public partial class MainWindowViewModel : ViewModelBase
+namespace DazContentInstaller.ViewModels;
+
+public partial class MainWindowViewModel(
+    ApplicationDbContext dbContext,
+    IDazArchiveInstaller archiveInstaller,
+    IDazArchiveScanner archiveScanner,
+    IFileDialogService fileDialogService,
+    SettingsService settingsService,
+    InstallerConfig installerConfig,
+    IAssetLibraryStatisticsService assetLibraryStatisticsService)
+    : ViewModelBase
 {
-    public string Greeting { get; } = "Welcome to Avalonia!";
+    public ObservableCollection<LoadedArchive> QueueArchives { get; } = [];
+    public ObservableCollection<InstalledArchiveViewModel> InstalledArchives { get; } = [];
+    public ObservableCollection<InstalledArchiveViewModel> FilteredInstalledArchives { get; } = [];
+    public ObservableCollection<InstalledArchiveViewModel> SelectedInstalledArchives { get; } = [];
+    public ObservableCollection<LoadedArchive> SelectedQueueArchives { get; } = [];
+    public ObservableCollection<AssetLibraryItemViewModel> AssetLibraries { get; } = [];
+    public ObservableCollection<ArchiveFileRecordViewModel> SelectedArchiveFiles { get; } = [];
+    public ObservableCollection<ArchiveFileRecordViewModel> FilteredSelectedArchiveFiles { get; } = [];
+
+    private bool _selectionHandlersRegistered;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(InstallQueueCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UninstallSelectedArchiveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ForgetSelectedArchiveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveQueuedArchivesCommand))]
+    private bool _isBusy;
+
+    [ObservableProperty]
+    private string _statusText = "Ready";
+
+    [ObservableProperty]
+    private double _progressPercent;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(InstallQueueCommand))]
+    private AssetLibraryItemViewModel? _selectedAssetLibrary;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UninstallSelectedArchiveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ForgetSelectedArchiveCommand))]
+    private InstalledArchiveViewModel? _selectedInstalledArchive;
+
+    [ObservableProperty]
+    private LoadedArchive? _selectedQueueArchive;
+
+    [ObservableProperty]
+    private string _installedArchiveSearchText = string.Empty;
+
+    [ObservableProperty]
+    private string _archiveFileSearchText = string.Empty;
+
+    [ObservableProperty]
+    private int _selectedAssetLibraryArchiveCount;
+
+    [ObservableProperty]
+    private int _selectedAssetLibraryInstalledArchiveCount;
+
+    [ObservableProperty]
+    private int _selectedAssetLibraryFileCount;
+
+    [ObservableProperty]
+    private int _selectedAssetLibraryActiveFileCount;
+
+    [ObservableProperty]
+    private ulong _selectedAssetLibraryTotalArchiveSize;
+
+    [ObservableProperty]
+    private ulong _selectedAssetLibraryTotalContentSize;
+
+    public string ArchiveFileListSummary =>
+        string.IsNullOrWhiteSpace(ArchiveFileSearchText)
+            ? $"{SelectedArchiveFiles.Count} entries"
+            : $"{FilteredSelectedArchiveFiles.Count} of {SelectedArchiveFiles.Count} entries";
+
+    public string SelectedAssetLibrarySummary
+    {
+        get
+        {
+            if (SelectedAssetLibrary is null)
+                return "No library selected";
+
+            if (SelectedAssetLibraryArchiveCount == 0)
+                return $"{SelectedAssetLibrary.Name} · no archives tracked";
+
+            return string.Join(" · ",
+            [
+                SelectedAssetLibrary.Name,
+                SelectedAssetLibraryArchiveCount == SelectedAssetLibraryInstalledArchiveCount
+                    ? $"{SelectedAssetLibraryArchiveCount} archives"
+                    : $"{SelectedAssetLibraryArchiveCount} archives ({SelectedAssetLibraryInstalledArchiveCount} installed)",
+                $"{SelectedAssetLibraryFileCount:N0} files",
+                $"{SelectedAssetLibraryActiveFileCount:N0} active",
+                $"{FileSizeFormatter.Format(SelectedAssetLibraryTotalArchiveSize)} archives",
+                $"{FileSizeFormatter.Format(SelectedAssetLibraryTotalContentSize)} installed"
+            ]);
+        }
+    }
+
+    public async Task InitializeAsync()
+    {
+        RegisterSelectionHandlers();
+        await settingsService.EnsureSettingsLoadedAsync();
+        await LoadLibrariesAsync();
+        await RefreshInstalledArchivesAsync();
+    }
+
+    private void RegisterSelectionHandlers()
+    {
+        if (_selectionHandlersRegistered)
+            return;
+
+        _selectionHandlersRegistered = true;
+        SelectedInstalledArchives.CollectionChanged += (_, _) =>
+        {
+            UninstallSelectedArchiveCommand.NotifyCanExecuteChanged();
+            ForgetSelectedArchiveCommand.NotifyCanExecuteChanged();
+        };
+        SelectedQueueArchives.CollectionChanged += (_, _) =>
+            RemoveQueuedArchivesCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnSelectedInstalledArchiveChanged(InstalledArchiveViewModel? value)
+    {
+        ArchiveFileSearchText = string.Empty;
+        _ = LoadSelectedArchiveDetailsAsync(value);
+    }
+
+    partial void OnInstalledArchiveSearchTextChanged(string value) => ApplyInstalledArchiveFilter();
+
+    partial void OnArchiveFileSearchTextChanged(string value)
+    {
+        ApplyArchiveFileFilter();
+        OnPropertyChanged(nameof(ArchiveFileListSummary));
+    }
+
+    partial void OnSelectedAssetLibraryChanged(AssetLibraryItemViewModel? value)
+    {
+        OnPropertyChanged(nameof(SelectedAssetLibrarySummary));
+        _ = RefreshInstalledArchivesAsync();
+    }
+
+    partial void OnSelectedAssetLibraryArchiveCountChanged(int value) =>
+        OnPropertyChanged(nameof(SelectedAssetLibrarySummary));
+
+    partial void OnSelectedAssetLibraryInstalledArchiveCountChanged(int value) =>
+        OnPropertyChanged(nameof(SelectedAssetLibrarySummary));
+
+    partial void OnSelectedAssetLibraryFileCountChanged(int value) =>
+        OnPropertyChanged(nameof(SelectedAssetLibrarySummary));
+
+    partial void OnSelectedAssetLibraryActiveFileCountChanged(int value) =>
+        OnPropertyChanged(nameof(SelectedAssetLibrarySummary));
+
+    partial void OnSelectedAssetLibraryTotalArchiveSizeChanged(ulong value) =>
+        OnPropertyChanged(nameof(SelectedAssetLibrarySummary));
+
+    partial void OnSelectedAssetLibraryTotalContentSizeChanged(ulong value) =>
+        OnPropertyChanged(nameof(SelectedAssetLibrarySummary));
+
+    [RelayCommand]
+    private async Task AddArchivesAsync()
+    {
+        var paths = await fileDialogService.OpenArchiveFilesAsync();
+        var addedArchives = new List<LoadedArchive>();
+        foreach (var path in paths.Where(path => QueueArchives.All(existing =>
+                     !string.Equals(existing.ArchivePath, path, StringComparison.OrdinalIgnoreCase))))
+        {
+            var archive = new LoadedArchive(path);
+            QueueArchives.Add(archive);
+            addedArchives.Add(archive);
+        }
+
+        SortQueueArchives();
+        InstallQueueCommand.NotifyCanExecuteChanged();
+        StatusText = QueueArchives.Count == 0 ? "No archives selected" : $"{QueueArchives.Count} archive(s) queued";
+
+        if (addedArchives.Count == 0)
+            return;
+
+        IsBusy = true;
+        try
+        {
+            foreach (var archive in addedArchives)
+            {
+                archive.ArchiveStatus = ArchiveStatus.Loading;
+                archive.StatusText = "Scanning archive";
+                archive.ProgressPercent = 0;
+                StatusText = $"Scanning {archive.DisplayName}";
+
+                try
+                {
+                    var scan = await archiveScanner.ScanArchiveAsync(archive.ArchivePath);
+                    archive.ApplyScan(scan);
+                }
+                catch (Exception ex)
+                {
+                    archive.ArchiveStatus = ArchiveStatus.Error;
+                    archive.ErrorMessage = ex.Message;
+                    archive.StatusText = ex.Message;
+                }
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+            InstallQueueCommand.NotifyCanExecuteChanged();
+            StatusText = $"{QueueArchives.Count} archive(s) queued";
+            SortQueueArchives();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanInstallQueue))]
+    private async Task InstallQueueAsync()
+    {
+        if (SelectedAssetLibrary is null)
+            return;
+
+        IsBusy = true;
+        ProgressPercent = 0;
+        try
+        {
+            var installQueue = QueueArchives
+                .Where(x => x.ArchiveStatus is ArchiveStatus.Ready)
+                .ToList();
+
+            if (installQueue.Count == 0)
+            {
+                StatusText = "Nothing to install";
+                return;
+            }
+
+            var installedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await foreach (var progress in archiveInstaller.InstallArchivesAsync(SelectedAssetLibrary.Id, installQueue))
+            {
+                StatusText = progress.StatusText ?? progress.DisplayName;
+                ProgressPercent = progress.ProgressPercent;
+
+                if (progress.ArchiveStatus == ArchiveStatus.Installed)
+                    installedPaths.Add(progress.ArchivePath);
+            }
+
+            foreach (var path in installedPaths)
+            {
+                var installed = QueueArchives.FirstOrDefault(x =>
+                    string.Equals(x.ArchivePath, path, StringComparison.OrdinalIgnoreCase));
+                if (installed is not null)
+                    QueueArchives.Remove(installed);
+            }
+
+            InstallQueueCommand.NotifyCanExecuteChanged();
+
+            await RefreshInstalledArchivesAsync();
+            await LoadLibrariesAsync();
+            SortQueueArchives();
+            StatusText = "Install queue finished";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemoveQueuedArchives))]
+    private void RemoveQueuedArchives()
+    {
+        var toRemove = SelectedQueueArchives.ToList();
+        if (toRemove.Count == 0)
+            return;
+
+        foreach (var archive in toRemove)
+            QueueArchives.Remove(archive);
+
+        SelectedQueueArchives.Clear();
+        InstallQueueCommand.NotifyCanExecuteChanged();
+        SortQueueArchives();
+        StatusText = QueueArchives.Count == 0 ? "Queue cleared" : $"{QueueArchives.Count} archive(s) queued";
+    }
+
+    [RelayCommand]
+    private void ClearQueue()
+    {
+        QueueArchives.Clear();
+        InstallQueueCommand.NotifyCanExecuteChanged();
+        StatusText = "Queue cleared";
+    }
+
+    [RelayCommand]
+    private async Task RefreshAsync()
+    {
+        await LoadLibrariesAsync();
+        await RefreshInstalledArchivesAsync();
+        StatusText = "Refreshed";
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUninstallSelectedArchive))]
+    private async Task UninstallSelectedArchiveAsync()
+    {
+        var toUninstall = SelectedInstalledArchives
+            .Where(x => x.Status == ArchiveStatus.Installed)
+            .ToList();
+        if (toUninstall.Count == 0)
+            return;
+
+        IsBusy = true;
+        ProgressPercent = 0;
+        try
+        {
+            foreach (var archive in toUninstall)
+            {
+                StatusText = $"Uninstalling {archive.ArchiveName}";
+                await archiveInstaller.UninstallArchiveAsync(archive.Id);
+            }
+
+            await RefreshInstalledArchivesAsync();
+            await LoadSelectedArchiveDetailsAsync(SelectedInstalledArchive);
+
+            StatusText = toUninstall.Count == 1
+                ? "Archive uninstalled"
+                : $"{toUninstall.Count} archives uninstalled";
+            ProgressPercent = 100;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanForgetSelectedArchive))]
+    private async Task ForgetSelectedArchiveAsync()
+    {
+        var toForget = SelectedInstalledArchives
+            .Where(x => x.Status is ArchiveStatus.Uninstalled or ArchiveStatus.Error)
+            .ToList();
+        if (toForget.Count == 0)
+            return;
+
+        IsBusy = true;
+        ProgressPercent = 0;
+        try
+        {
+            foreach (var archive in toForget)
+            {
+                StatusText = $"Removing database records for {archive.ArchiveName}";
+                await archiveInstaller.ForgetArchiveAsync(archive.Id);
+            }
+
+            await RefreshInstalledArchivesAsync();
+            await LoadSelectedArchiveDetailsAsync(SelectedInstalledArchive);
+
+            StatusText = toForget.Count == 1
+                ? "Archive removed from install manager"
+                : $"{toForget.Count} archives removed from install manager";
+            ProgressPercent = 100;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task ReloadAfterSettingsAsync()
+    {
+        await settingsService.EnsureSettingsLoadedAsync();
+        await LoadLibrariesAsync();
+        await RefreshInstalledArchivesAsync();
+        StatusText = "Settings updated";
+    }
+
+    private bool CanInstallQueue()
+    {
+        return !IsBusy && SelectedAssetLibrary is not null && QueueArchives.Any(x => x.ArchiveStatus == ArchiveStatus.Ready);
+    }
+
+    private bool CanRemoveQueuedArchives()
+    {
+        return !IsBusy && SelectedQueueArchives.Count > 0;
+    }
+
+    private bool CanUninstallSelectedArchive()
+    {
+        return !IsBusy && SelectedInstalledArchives.Any(x => x.Status == ArchiveStatus.Installed);
+    }
+
+    private bool CanForgetSelectedArchive()
+    {
+        return !IsBusy && SelectedInstalledArchives.Any(x => x.Status is ArchiveStatus.Uninstalled or ArchiveStatus.Error);
+    }
+
+    private async Task LoadLibrariesAsync()
+    {
+        var libraries = await dbContext.AssetLibraries.OrderBy(x => x.Name).ToListAsync();
+        AssetLibraries.Clear();
+
+        foreach (var library in libraries)
+        {
+            AssetLibraries.Add(new AssetLibraryItemViewModel
+            {
+                Id = library.Id,
+                Name = library.Name,
+                Path = library.Path,
+                ArchiveBackupPath = library.ArchiveBackupPath,
+                IsDefault = library.Id == settingsService.CurrentSettings.DefaultAssetLibrary
+            });
+        }
+
+        AssetLibraries.SortBy(x => x.Name);
+        SelectedAssetLibrary = AssetLibraries.FirstOrDefault(x => x.IsDefault) ?? AssetLibraries.FirstOrDefault();
+    }
+
+    private async Task RefreshInstalledArchivesAsync()
+    {
+        var selectedIds = SelectedInstalledArchives.Select(x => x.Id).ToHashSet();
+        InstalledArchives.Clear();
+        SelectedInstalledArchives.Clear();
+
+        var topLevelArchives = await dbContext.Archives
+            .Include(x => x.AssetLibrary)
+            .Include(x => x.AssetFiles)
+            .ThenInclude(x => x.InstallRecord)
+            .Where(x => x.ParentArchiveId == null &&
+                        (SelectedAssetLibrary == null || x.AssetLibraryId == SelectedAssetLibrary.Id))
+            .ToListAsync();
+
+        foreach (var archive in topLevelArchives.OrderBy(x => x.ArchiveName, StringComparer.OrdinalIgnoreCase))
+        {
+            var archiveIds = await GetArchiveTreeIdsAsync(archive.Id);
+            var records = await dbContext.InstallRecords
+                .Where(x => archiveIds.Contains(x.ArchiveId))
+                .ToListAsync();
+
+            InstalledArchives.Add(new InstalledArchiveViewModel
+            {
+                Id = archive.Id,
+                ArchiveName = archive.ArchiveName,
+                AssetLibraryName = archive.AssetLibrary.Name,
+                ContentRoot = archive.ContentRoot,
+                BackupPath = GetDerivedBackupPath(archive.AssetLibrary, archive.ArchiveName),
+                Status = archive.Status,
+                AssetTypes = AssetTypeCollection.Parse(archive.AssetTypes),
+                Categories = ParseCategories(archive.Categories),
+                InstalledAt = archive.InstallCompletedAt ?? archive.InstallStartedAt,
+                ArchiveSize = archive.ArchiveSize,
+                FileCount = records.Count,
+                ActiveFileCount = records.Count(x => !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled),
+                ReplacedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Replaced),
+                SkippedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Skipped),
+                ErrorMessage = archive.ErrorMessage
+            });
+        }
+
+        foreach (var archive in InstalledArchives.Where(x => selectedIds.Contains(x.Id)))
+            SelectedInstalledArchives.Add(archive);
+
+        SelectedInstalledArchive = SelectedInstalledArchives.FirstOrDefault()
+            ?? InstalledArchives.FirstOrDefault();
+
+        ApplyInstalledArchiveFilter();
+        await RefreshSelectedAssetLibrarySummaryAsync();
+    }
+
+    private async Task RefreshSelectedAssetLibrarySummaryAsync()
+    {
+        if (SelectedAssetLibrary is null)
+        {
+            SelectedAssetLibraryArchiveCount = 0;
+            SelectedAssetLibraryInstalledArchiveCount = 0;
+            SelectedAssetLibraryFileCount = 0;
+            SelectedAssetLibraryActiveFileCount = 0;
+            SelectedAssetLibraryTotalArchiveSize = 0;
+            SelectedAssetLibraryTotalContentSize = 0;
+            return;
+        }
+
+        var statistics = await assetLibraryStatisticsService.GetStatisticsAsync(SelectedAssetLibrary.Id);
+        SelectedAssetLibraryArchiveCount = statistics.ArchiveCount;
+        SelectedAssetLibraryInstalledArchiveCount = statistics.InstalledArchiveCount;
+        SelectedAssetLibraryFileCount = statistics.FileCount;
+        SelectedAssetLibraryActiveFileCount = statistics.ActiveFileCount;
+        SelectedAssetLibraryTotalArchiveSize = statistics.TotalArchiveSize;
+        SelectedAssetLibraryTotalContentSize = statistics.TotalContentSize;
+    }
+
+    private async Task LoadSelectedArchiveDetailsAsync(InstalledArchiveViewModel? archive)
+    {
+        SelectedArchiveFiles.Clear();
+        FilteredSelectedArchiveFiles.Clear();
+        OnPropertyChanged(nameof(ArchiveFileListSummary));
+        if (archive is null)
+            return;
+
+        var archiveIds = await GetArchiveTreeIdsAsync(archive.Id);
+        var records = await dbContext.InstallRecords
+            .Include(x => x.AssetFile)
+            .Where(x => archiveIds.Contains(x.ArchiveId))
+            .ToListAsync();
+
+        foreach (var record in records
+                     .OrderBy(x => x.AssetFile.InstalledRelativePath, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(x => x.InstalledAt))
+        {
+            SelectedArchiveFiles.Add(new ArchiveFileRecordViewModel
+            {
+                ArchiveRelativePath = record.AssetFile.ArchiveRelativePath,
+                InstalledRelativePath = record.AssetFile.InstalledRelativePath,
+                FileHash = record.AssetFile.FileHash,
+                FileSize = record.AssetFile.FileSize,
+                Status = record.InstallRecordStatus,
+                IsOverridden = record.HasBeenOverriden,
+                InstalledAt = record.InstalledAt
+            });
+        }
+
+        ApplyArchiveFileFilter();
+        OnPropertyChanged(nameof(ArchiveFileListSummary));
+    }
+
+    private void ApplyInstalledArchiveFilter()
+    {
+        FilteredInstalledArchives.Clear();
+
+        var query = InstalledArchiveSearchText.Trim();
+        var matches = (string.IsNullOrWhiteSpace(query)
+                ? InstalledArchives
+                : InstalledArchives.Where(x => MatchesInstalledArchiveSearch(x, query)))
+            .OrderBy(x => x.ArchiveName, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var archive in matches)
+            FilteredInstalledArchives.Add(archive);
+    }
+
+    private void ApplyArchiveFileFilter()
+    {
+        FilteredSelectedArchiveFiles.Clear();
+
+        var query = ArchiveFileSearchText.Trim();
+        var matches = (string.IsNullOrWhiteSpace(query)
+                ? SelectedArchiveFiles
+                : SelectedArchiveFiles.Where(x => MatchesArchiveFileSearch(x, query)))
+            .OrderBy(x => x.InstalledRelativePath, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in matches)
+            FilteredSelectedArchiveFiles.Add(file);
+    }
+
+    private static bool MatchesInstalledArchiveSearch(InstalledArchiveViewModel archive, string query)
+    {
+        return Contains(archive.ArchiveName, query)
+               || Contains(archive.AssetLibraryName, query)
+               || Contains(archive.BackupPath, query)
+               || Contains(archive.ContentRoot, query)
+               || Contains(archive.Status.ToString(), query)
+               || archive.Categories.Any(category => Contains(category, query))
+               || archive.AssetTypes.Any(assetType => Contains(assetType.ToString(), query));
+    }
+
+    private static bool MatchesArchiveFileSearch(ArchiveFileRecordViewModel file, string query)
+    {
+        return Contains(file.InstalledRelativePath, query)
+               || Contains(file.ArchiveRelativePath, query)
+               || Contains(file.Status.ToString(), query);
+    }
+
+    private static bool Contains(string? value, string query)
+    {
+        return !string.IsNullOrEmpty(value)
+               && value.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(Guid rootId)
+    {
+        var queue = new Queue<Guid>();
+        var visited = new HashSet<Guid>();
+        queue.Enqueue(rootId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!visited.Add(current))
+                continue;
+
+            var children = await dbContext.Archives.Where(x => x.ParentArchiveId == current).Select(x => x.Id).ToListAsync();
+            foreach (var child in children)
+                queue.Enqueue(child);
+        }
+
+        return visited;
+    }
+
+    private string GetDerivedBackupPath(AssetLibrary assetLibrary, string archiveName)
+    {
+        var backupRoot = assetLibrary.ArchiveBackupPath;
+        if (string.IsNullOrWhiteSpace(backupRoot))
+            backupRoot = settingsService.CurrentSettings.DefaultArchiveBackupPath;
+        if (string.IsNullOrWhiteSpace(backupRoot))
+            backupRoot = installerConfig.ArchiveBackupPath;
+
+        return Path.Combine(backupRoot, archiveName);
+    }
+
+    private static IReadOnlyList<string> ParseCategories(string categories)
+    {
+        return categories.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static void SortQueueArchives(ObservableCollection<LoadedArchive> queueArchives)
+    {
+        queueArchives.SortBy(x => x.DisplayName);
+    }
+
+    private void SortQueueArchives() => SortQueueArchives(QueueArchives);
 }

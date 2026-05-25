@@ -4,5 +4,6 @@ public enum InstallRecordStatus
 {
     Installed,
     Skipped,
-    Replaced
+    Replaced,
+    Uninstalled
 }

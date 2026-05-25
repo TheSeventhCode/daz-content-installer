@@ -21,14 +21,20 @@ public class AssetLibrary
     [StringLength(4096)] public string Path { get; set; } = null!;
 
     /// <summary>
+    /// Optional override for where original archives should be backed up for this library.
+    /// </summary>
+    [StringLength(4096)]
+    public string? ArchiveBackupPath { get; set; }
+
+    /// <summary>
     /// When was this asset library created
     /// </summary>
-    public DateTimeOffset CreatedDate { get; set; } = DateTimeOffset.Now;
+    public DateTime CreatedDate { get; set; } = DateTime.Now;
     
     /// <summary>
     /// When was something last installed or uninstalled from this asset library
     /// </summary>
-    public DateTimeOffset LastUsed { get; set; } = DateTimeOffset.Now;
+    public DateTime LastUsed { get; set; } = DateTime.Now;
     
     /// <summary>
     /// The archives that were installed into this asset library

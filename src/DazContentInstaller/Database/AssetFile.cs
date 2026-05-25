@@ -18,6 +18,18 @@ public class AssetFile
     public ulong FileSize { get; set; }
 
     /// <summary>
+    /// The relative path of this file inside the source archive.
+    /// </summary>
+    [StringLength(4096)]
+    public string ArchiveRelativePath { get; set; } = null!;
+
+    /// <summary>
+    /// The relative path this file should be installed to inside the asset library.
+    /// </summary>
+    [StringLength(4096)]
+    public string InstalledRelativePath { get; set; } = null!;
+
+    /// <summary>
     /// Hash of the asset file
     /// </summary>
     [StringLength(1024)] public string FileHash { get; set; } = null!;

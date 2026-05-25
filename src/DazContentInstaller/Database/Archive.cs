@@ -25,6 +25,40 @@ public class Archive
     /// Current installation status
     /// </summary>
     public ArchiveStatus Status { get; set; }
+
+    /// <summary>
+    /// The relative content root detected inside the archive that maps to the asset library.
+    /// </summary>
+    [StringLength(4096)]
+    public string? ContentRoot { get; set; }
+
+    /// <summary>
+    /// Comma-separated asset types detected while scanning the archive.
+    /// </summary>
+    [StringLength(512)]
+    public string AssetTypes { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Comma-separated folder labels detected from the archive's folder structure.
+    /// </summary>
+    [StringLength(2048)]
+    public string Categories { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When installation of this archive started.
+    /// </summary>
+    public DateTime? InstallStartedAt { get; set; }
+
+    /// <summary>
+    /// When installation of this archive completed.
+    /// </summary>
+    public DateTime? InstallCompletedAt { get; set; }
+
+    /// <summary>
+    /// Error message captured for the latest failed install attempt.
+    /// </summary>
+    [StringLength(4096)]
+    public string? ErrorMessage { get; set; }
     
     /// <summary>
     /// Files part of this archive

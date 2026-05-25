@@ -15,8 +15,18 @@ public class SettingsService(IOptions<InstallerConfig> options, ApplicationDbCon
 {
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { WriteIndented = true };
     private readonly string _settingsPath = options.Value.AppSettingsPath;
+    private readonly InstallerConfig _config = options.Value;
+    private bool _settingsLoaded;
 
     public AppSettings CurrentSettings { get; private set; } = new();
+
+    public async Task EnsureSettingsLoadedAsync()
+    {
+        if (_settingsLoaded)
+            return;
+
+        await LoadSettingsAsync();
+    }
 
     public async Task LoadSettingsAsync()
     {
@@ -25,6 +35,9 @@ public class SettingsService(IOptions<InstallerConfig> options, ApplicationDbCon
             if (!File.Exists(_settingsPath))
             {
                 await AutoDetectDazLibrariesAsync();
+                ApplyDefaults();
+                await SaveSettingsAsync();
+                _settingsLoaded = true;
                 return;
             }
 
@@ -32,11 +45,16 @@ public class SettingsService(IOptions<InstallerConfig> options, ApplicationDbCon
             var settings = JsonSerializer.Deserialize<AppSettings>(json);
             if(settings is not null)
                 CurrentSettings = settings;
+
+            ApplyDefaults();
+            _settingsLoaded = true;
         }
         catch (Exception e)
         {
             Console.WriteLine("Error loading settings: {0}", e);
             CurrentSettings = new AppSettings();
+            ApplyDefaults();
+            _settingsLoaded = true;
         }
     }
 
@@ -55,6 +73,13 @@ public class SettingsService(IOptions<InstallerConfig> options, ApplicationDbCon
         {
             throw new InvalidOperationException("Failed to save settings: {0}", e);
         }
+    }
+
+    public void UpdateSettings(AppSettings settings)
+    {
+        CurrentSettings = settings;
+        ApplyDefaults();
+        _settingsLoaded = true;
     }
     
     public async Task AutoDetectDazLibrariesAsync()
@@ -80,5 +105,10 @@ public class SettingsService(IOptions<InstallerConfig> options, ApplicationDbCon
         }
 
         await dbContext.SaveChangesAsync();
+    }
+
+    private void ApplyDefaults()
+    {
+        CurrentSettings.DefaultArchiveBackupPath ??= _config.ArchiveBackupPath;
     }
 }

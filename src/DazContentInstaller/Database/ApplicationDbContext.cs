@@ -30,10 +30,17 @@ public class ApplicationDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<Archive>()
+            .HasIndex(x => new { x.AssetLibraryId, x.ArchiveName, x.ParentArchiveId });
+
+        modelBuilder.Entity<Archive>()
             .HasMany(x => x.SubArchives)
             .WithOne(x => x.ParentArchive)
             .HasForeignKey(x => x.ParentArchiveId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<AssetFile>()
+            .HasIndex(x => new { x.ArchiveId, x.ArchiveRelativePath })
+            .IsUnique();
 
         modelBuilder.Entity<InstalledFile>()
             .HasMany(x => x.InstallRecords)
@@ -51,6 +58,9 @@ public class ApplicationDbContext : DbContext
             .WithOne(x => x.InstallRecord)
             .HasForeignKey<InstallRecord>(x => x.AssetFileId)
             .IsRequired();
+
+        modelBuilder.Entity<InstallRecord>()
+            .HasIndex(x => new { x.ArchiveId, x.InstalledFileId, x.HasBeenOverriden });
 
         base.OnModelCreating(modelBuilder);
     }
