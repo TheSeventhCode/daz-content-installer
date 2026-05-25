@@ -79,7 +79,7 @@ Enter the development shell:
 
 ```sh
 nix develop
-dotnet run --project DazContentInstaller/DazContentInstaller.csproj
+dotnet run --project src/DazContentInstaller/DazContentInstaller.csproj
 ```
 
 When NuGet package references change, refresh `deps.json` before committing:
@@ -106,12 +106,12 @@ To build and run this project from source, you will need the .NET 10 SDK install
 
 2.  **Restore dependencies:**
     ```sh
-    dotnet restore DazContentInstaller/DazContentInstaller.csproj
+    dotnet restore src/DazContentInstaller/DazContentInstaller.csproj
     ```
 
 3.  **Run the application:**
     ```sh
-    dotnet run --project DazContentInstaller/DazContentInstaller.csproj
+    dotnet run --project src/DazContentInstaller/DazContentInstaller.csproj
     ```
 
 ## License

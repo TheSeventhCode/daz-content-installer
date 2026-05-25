@@ -9,7 +9,7 @@ on:
 
 env:
   DOTNET_VERSION: '10.0.x'
-  PROJECT_PATH: 'DazContentInstaller/DazContentInstaller.csproj'
+  PROJECT_PATH: 'src/DazContentInstaller/DazContentInstaller.csproj'
   ARTIFACT_NAME: 'DazContentInstaller'
 
 jobs:
@@ -133,7 +133,7 @@ jobs:
         cd ./publish/win-x86 && zip -r "../../artifacts/${{ env.ARTIFACT_NAME }}-${{ github.ref_name }}-win-x86.zip" . && cd ../..
 
         # Zip linux-x64 version
-        cd ./publish/linux-x64 && zip -r "../../artifacts/${{ env.ARTIFACT_NAME }}-linux-x64.zip" . && cd ../..
+        cd ./publish/linux-x64 && zip -r "../../artifacts/${{ env.ARTIFACT_NAME }}-${{ github.ref_name }}-linux-x64.zip" . && cd ../..
 
     - name: Generate release notes
       id: release_notes

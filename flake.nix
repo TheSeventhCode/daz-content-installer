@@ -73,7 +73,11 @@
                   "publish"
                   "result"
                 ]
-                || (type == "directory" && lib.elem baseName [ "bin" "obj" ])
+                || (type == "directory" && (
+                  lib.elem baseName [ "bin" "obj" ]
+                  || lib.hasPrefix "bin\\" baseName
+                  || lib.hasPrefix "obj\\" baseName
+                ))
               );
         };
         updateDepsCommand = pkgs.writeShellScriptBin "update-dci-deps" ''
@@ -83,7 +87,7 @@
           cd "$repo_root"
 
           rm -rf ./.nuget-packages
-          dotnet restore "DazContentInstaller/DazContentInstaller.csproj" --packages ./.nuget-packages
+          dotnet restore "src/DazContentInstaller/DazContentInstaller.csproj" --packages ./.nuget-packages
           nuget-to-json ./.nuget-packages > deps.json
           rm -rf ./.nuget-packages
         '';
@@ -129,7 +133,7 @@ EOF
           version = "0.1.0";
           src = cleanSrc;
 
-          projectFile = "DazContentInstaller/DazContentInstaller.csproj";
+          projectFile = "src/DazContentInstaller/DazContentInstaller.csproj";
           nugetDeps = ./deps.json;
 
           dotnet-sdk = pkgs.dotnetCorePackages.sdk_10_0;
@@ -141,8 +145,8 @@ EOF
           executables = [ "DazContentInstaller" ];
           runtimeDeps = runtimeLibs;
           postInstall = ''
-            install -Dm644 "$NIX_BUILD_TOP/source/DazContentInstaller/Assets/icon.svg" \
-              "$out/share/icons/hicolor/scalable/apps/daz-content-installer.svg"
+            install -Dm644 "$NIX_BUILD_TOP/source/src/DazContentInstaller/Assets/avalonia-logo.ico" \
+              "$out/share/icons/hicolor/256x256/apps/daz-content-installer.ico"
           '';
           postFixup = ''
             wrapProgram "$out/bin/DazContentInstaller" ${lib.escapeShellArgs wrapperArgs}
