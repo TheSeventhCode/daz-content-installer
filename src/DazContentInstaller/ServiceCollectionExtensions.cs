@@ -33,6 +33,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileDialogService, FileDialogService>();
         services.AddSingleton<IDazArchiveScanner, DazArchiveScanner>();
         services.AddSingleton<IAssetLibraryStatisticsService, AssetLibraryStatisticsService>();
+        services.AddSingleton<IInstallRecordStatisticsService, InstallRecordStatisticsService>();
+        services.AddSingleton<IArchiveFileDetailsService, ArchiveFileDetailsService>();
         services.AddSingleton<DestinationPathLockRegistry>();
         services.AddTransient<IDazArchiveInstaller>(sp =>
             new DazArchiveInstaller(

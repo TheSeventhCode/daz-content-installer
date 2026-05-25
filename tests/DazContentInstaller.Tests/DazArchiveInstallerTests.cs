@@ -370,6 +370,34 @@ public class DazArchiveInstallerTests
     }
 
     [Fact]
+    public async Task InstallArchivesAsync_BatchesInstallRecordsWhenSingleThreaded()
+    {
+        const int fileCount = 25;
+        var entries = Enumerable.Range(1, fileCount)
+            .Select(i => ($"data/author/product/file{i:D3}.txt", $"content-{i}"))
+            .ToArray();
+
+        await using var fixture = await InstallerFixture.CreateAsync(config =>
+            config.MaxConcurrentArchiveInstalls = 1);
+        var archivePath = fixture.CreateArchive("many-files.zip", entries);
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        (await fixture.DbContext.InstallRecords.CountAsync()).ShouldBe(fileCount);
+        (await fixture.DbContext.AssetFiles.CountAsync()).ShouldBe(fileCount);
+        (await fixture.DbContext.InstalledFiles.CountAsync()).ShouldBe(fileCount);
+
+        foreach (var (entryPath, content) in entries)
+        {
+            var relativePath = entryPath.Replace('/', Path.DirectorySeparatorChar);
+            var installedPath = Path.Combine(fixture.LibraryPath, relativePath);
+            File.Exists(installedPath).ShouldBeTrue();
+            (await File.ReadAllTextAsync(installedPath)).ShouldBe(content);
+        }
+    }
+
+    [Fact]
     public async Task InstallArchivesAsync_ReplacesCaseVariantPathsWithSameLogicalDestination()
     {
         await using var fixture = await InstallerFixture.CreateAsync();

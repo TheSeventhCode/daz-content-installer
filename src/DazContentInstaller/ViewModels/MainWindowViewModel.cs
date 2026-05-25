@@ -22,7 +22,9 @@ public partial class MainWindowViewModel(
     IFileDialogService fileDialogService,
     SettingsService settingsService,
     InstallerConfig installerConfig,
-    IAssetLibraryStatisticsService assetLibraryStatisticsService)
+    IAssetLibraryStatisticsService assetLibraryStatisticsService,
+    IInstallRecordStatisticsService installRecordStatisticsService,
+    IArchiveFileDetailsService archiveFileDetailsService)
     : ViewModelBase
 {
     private const int CollectionUpdateBatchSize = 50;
@@ -608,8 +610,6 @@ public partial class MainWindowViewModel(
         await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var topLevelArchives = await dbContext.Archives
             .Include(x => x.AssetLibrary)
-            .Include(x => x.AssetFiles)
-            .ThenInclude(x => x.InstallRecord)
             .Where(x => x.ParentArchiveId == null &&
                         x.Status != ArchiveStatus.Loading &&
                         x.Status != ArchiveStatus.Installing &&
@@ -618,12 +618,16 @@ public partial class MainWindowViewModel(
                         (SelectedAssetLibrary == null || x.AssetLibraryId == SelectedAssetLibrary.Id))
             .ToListAsync();
 
+        var countsByRootArchiveId = await BuildInstallRecordCountsByRootArchiveAsync(dbContext, topLevelArchives);
+
         var viewModels = new List<InstalledArchiveViewModel>();
         foreach (var archive in topLevelArchives.OrderBy(x =>
                      ArchiveDisplayName.GetEffectiveDisplayName(x.ArchiveName, x.DisplayName),
                      StringComparer.OrdinalIgnoreCase))
         {
-            viewModels.Add(await CreateInstalledArchiveViewModelAsync(dbContext, archive));
+            countsByRootArchiveId.TryGetValue(archive.Id, out var counts);
+            counts ??= InstallRecordCounts.Empty;
+            viewModels.Add(CreateInstalledArchiveViewModel(archive, counts));
             if (viewModels.Count % CollectionUpdateBatchSize == 0)
                 await Task.Yield();
         }
@@ -672,14 +676,15 @@ public partial class MainWindowViewModel(
         await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var archive = await dbContext.Archives
             .Include(x => x.AssetLibrary)
-            .Include(x => x.AssetFiles)
-            .ThenInclude(x => x.InstallRecord)
             .FirstOrDefaultAsync(x => x.Id == loadedArchive.ArchiveId && x.ParentArchiveId == null);
 
         if (archive is null || archive.Status != ArchiveStatus.Installed)
             return;
 
-        var viewModel = await CreateInstalledArchiveViewModelAsync(dbContext, archive);
+        var archiveIds = await GetArchiveTreeIdsForLibraryAsync(
+            dbContext, archive.AssetLibraryId, archive.Id);
+        var counts = await installRecordStatisticsService.GetCountsForArchivesAsync(dbContext, archiveIds);
+        var viewModel = CreateInstalledArchiveViewModel(archive, counts);
 
         await UiThread.RunAsync(() =>
         {
@@ -715,13 +720,40 @@ public partial class MainWindowViewModel(
         await RefreshSelectedAssetLibrarySummaryAsync();
     }
 
-    private async Task<InstalledArchiveViewModel> CreateInstalledArchiveViewModelAsync(ApplicationDbContext dbContext,
-        Archive archive)
+    private async Task<Dictionary<Guid, InstallRecordCounts>> BuildInstallRecordCountsByRootArchiveAsync(
+        ApplicationDbContext dbContext, IReadOnlyList<Archive> topLevelArchives)
     {
-        var archiveIds = await GetArchiveTreeIdsAsync(dbContext, archive.Id);
-        var records = await dbContext.InstallRecords
-            .Where(x => archiveIds.Contains(x.ArchiveId))
-            .ToListAsync();
+        if (topLevelArchives.Count == 0)
+            return [];
+
+        var libraryIds = topLevelArchives.Select(x => x.AssetLibraryId).Distinct().ToList();
+        var parentById = await dbContext.Archives
+            .AsNoTracking()
+            .Where(x => libraryIds.Contains(x.AssetLibraryId))
+            .Select(x => new { x.Id, x.ParentArchiveId })
+            .ToDictionaryAsync(x => x.Id, x => x.ParentArchiveId);
+
+        var treeIdsByRoot = new Dictionary<Guid, HashSet<Guid>>();
+        var allTreeArchiveIds = new HashSet<Guid>();
+        foreach (var archive in topLevelArchives)
+        {
+            var treeIds = ArchiveTreeResolver.GetTreeIds(parentById, archive.Id);
+            treeIdsByRoot[archive.Id] = treeIds;
+            allTreeArchiveIds.UnionWith(treeIds);
+        }
+
+        var countsByArchiveId =
+            await installRecordStatisticsService.GetCountsGroupedByArchiveIdAsync(dbContext, allTreeArchiveIds);
+
+        var countsByRootArchiveId = new Dictionary<Guid, InstallRecordCounts>(topLevelArchives.Count);
+        foreach (var (rootArchiveId, treeIds) in treeIdsByRoot)
+            countsByRootArchiveId[rootArchiveId] = ArchiveTreeResolver.RollUpCounts(treeIds, countsByArchiveId);
+
+        return countsByRootArchiveId;
+    }
+
+    private InstalledArchiveViewModel CreateInstalledArchiveViewModel(Archive archive, InstallRecordCounts counts)
+    {
         var thumbnailPath = GetDerivedThumbnailPath(archive.AssetLibrary, archive.Id, archive.ThumbnailFileExtension);
 
         return new InstalledArchiveViewModel
@@ -738,11 +770,10 @@ public partial class MainWindowViewModel(
             Categories = ParseCategories(archive.Categories),
             InstalledAt = archive.InstallCompletedAt ?? archive.InstallStartedAt,
             ArchiveSize = archive.ArchiveSize,
-            FileCount = records.Count,
-            ActiveFileCount = records.Count(x =>
-                !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled),
-            ReplacedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Replaced),
-            SkippedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Skipped),
+            FileCount = counts.FileCount,
+            ActiveFileCount = counts.ActiveFileCount,
+            ReplacedFileCount = counts.ReplacedFileCount,
+            SkippedFileCount = counts.SkippedFileCount,
             ErrorMessage = archive.ErrorMessage
         };
     }
@@ -787,7 +818,8 @@ public partial class MainWindowViewModel(
         IReadOnlyList<ArchiveFileGroupViewModel> builtGroups;
         try
         {
-            builtGroups = await BuildSelectedArchiveFileGroupsAsync(archive, cancellationToken)
+            builtGroups = await BuildSelectedArchiveFileGroupsAsync(
+                    archive, SelectedAssetLibrary?.Id, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -809,21 +841,27 @@ public partial class MainWindowViewModel(
     }
 
     private async Task<IReadOnlyList<ArchiveFileGroupViewModel>> BuildSelectedArchiveFileGroupsAsync(
-        InstalledArchiveViewModel archive, CancellationToken cancellationToken)
+        InstalledArchiveViewModel archive, Guid? assetLibraryId, CancellationToken cancellationToken)
     {
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
             .ConfigureAwait(false);
-        var archiveIds = await GetArchiveTreeIdsAsync(dbContext, archive.Id, cancellationToken)
+
+        var resolvedAssetLibraryId = assetLibraryId
+            ?? await dbContext.Archives
+                .AsNoTracking()
+                .Where(x => x.Id == archive.Id)
+                .Select(x => x.AssetLibraryId)
+                .FirstAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+        var archiveIds = await GetArchiveTreeIdsForLibraryAsync(
+                dbContext, resolvedAssetLibraryId, archive.Id, cancellationToken)
             .ConfigureAwait(false);
-        var archivesInTree = await dbContext.Archives
-            .Where(x => archiveIds.Contains(x.Id))
-            .ToListAsync(cancellationToken)
+        var archivesInTree = await archiveFileDetailsService
+            .GetArchivesInTreeAsync(dbContext, archiveIds, cancellationToken)
             .ConfigureAwait(false);
-        var records = await dbContext.InstallRecords
-            .Include(x => x.AssetFile)
-            .Include(x => x.Archive)
-            .Where(x => archiveIds.Contains(x.ArchiveId))
-            .ToListAsync(cancellationToken)
+        var records = await archiveFileDetailsService
+            .GetInstallRecordRowsAsync(dbContext, archiveIds, cancellationToken)
             .ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -852,7 +890,7 @@ public partial class MainWindowViewModel(
             };
 
             foreach (var record in archiveRecords
-                         .OrderBy(x => x.AssetFile.InstalledRelativePath, StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(x => x.InstalledRelativePath, StringComparer.OrdinalIgnoreCase)
                          .ThenBy(x => x.InstalledAt))
             {
                 group.Files.Add(new ArchiveFileRecordViewModel
@@ -860,10 +898,10 @@ public partial class MainWindowViewModel(
                     ArchiveId = archiveEntity.Id,
                     OwnerArchiveName = archiveEntity.ArchiveName,
                     OwnerDisplayName = archiveEntity.DisplayName,
-                    ArchiveRelativePath = record.AssetFile.ArchiveRelativePath,
-                    InstalledRelativePath = record.AssetFile.InstalledRelativePath,
-                    FileHash = record.AssetFile.FileHash,
-                    FileSize = record.AssetFile.FileSize,
+                    ArchiveRelativePath = record.ArchiveRelativePath,
+                    InstalledRelativePath = record.InstalledRelativePath,
+                    FileHash = record.FileHash,
+                    FileSize = record.FileSize,
                     Status = record.InstallRecordStatus,
                     IsOverridden = record.HasBeenOverriden,
                     InstalledAt = record.InstalledAt
@@ -1020,29 +1058,18 @@ public partial class MainWindowViewModel(
                && value.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(ApplicationDbContext dbContext, Guid rootId,
+    private static async Task<HashSet<Guid>> GetArchiveTreeIdsForLibraryAsync(
+        ApplicationDbContext dbContext, Guid assetLibraryId, Guid rootId,
         CancellationToken cancellationToken = default)
     {
-        var queue = new Queue<Guid>();
-        var visited = new HashSet<Guid>();
-        queue.Enqueue(rootId);
+        var parentById = await dbContext.Archives
+            .AsNoTracking()
+            .Where(x => x.AssetLibraryId == assetLibraryId)
+            .Select(x => new { x.Id, x.ParentArchiveId })
+            .ToDictionaryAsync(x => x.Id, x => x.ParentArchiveId, cancellationToken)
+            .ConfigureAwait(false);
 
-        while (queue.Count > 0)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var current = queue.Dequeue();
-            if (!visited.Add(current))
-                continue;
-
-            var children = await dbContext.Archives.Where(x => x.ParentArchiveId == current).Select(x => x.Id)
-                .ToListAsync(cancellationToken)
-                .ConfigureAwait(false);
-            foreach (var child in children)
-                queue.Enqueue(child);
-        }
-
-        return visited;
+        return ArchiveTreeResolver.GetTreeIds(parentById, rootId);
     }
 
     private string GetDerivedBackupPath(AssetLibrary assetLibrary, string archiveName)
