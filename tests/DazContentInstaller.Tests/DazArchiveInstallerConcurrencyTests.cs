@@ -66,6 +66,30 @@ public class DazArchiveInstallerConcurrencyTests
         (finalContent == "first" || finalContent == "second version").ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task InstallArchivesAsync_PreservesReplacementSemanticsForCaseVariantPathsConcurrently()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync(config =>
+            config.MaxConcurrentArchiveInstalls = 2);
+        var firstArchive = fixture.CreateArchive("first.zip", ("data/shared/file.txt", "first"));
+        var secondArchive = fixture.CreateArchive("second.zip", ("DATA/shared/file.txt", "second version"));
+        var installer = fixture.CreateInstaller();
+
+        var queue = new[] { new LoadedArchive(firstArchive), new LoadedArchive(secondArchive) };
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, queue).ToListAsync();
+
+        (await fixture.DbContext.InstalledFiles.CountAsync()).ShouldBe(1);
+        Directory.Exists(Path.Combine(fixture.LibraryPath, "DATA")).ShouldBeFalse();
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt")).ShouldBeTrue();
+
+        var records = (await fixture.DbContext.InstallRecords.ToListAsync()).OrderBy(x => x.InstalledAt).ToList();
+        records.Count.ShouldBe(2);
+        records.Count(x => x.HasBeenOverriden).ShouldBe(1);
+
+        var finalContent = await File.ReadAllTextAsync(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt"));
+        (finalContent == "first" || finalContent == "second version").ShouldBeTrue();
+    }
+
     private sealed class CountingArchiveScanner(IDazArchiveScanner inner) : IDazArchiveScanner
     {
         public int ScanCount { get; private set; }

@@ -344,6 +344,7 @@ public class DazArchiveInstaller(
 
         using var workingDirectory = directoryService.GetTempDirectory();
         var installableEntries = new List<InstallableArchiveEntry>();
+        var libraryRoot = GetCanonicalPath(assetLibrary.Path);
 
         Exception? scanError = null;
         try
@@ -351,7 +352,7 @@ public class DazArchiveInstaller(
             using var sourceArchive = ArchiveFactory.OpenArchive(sourceInfo.FullName);
             await CollectInstallableEntriesAsync(dbContext, sourceArchive, archiveEntity,
                 workingDirectory.DirectoryInfo.FullName,
-                installableEntries, cancellationToken);
+                installableEntries, libraryRoot, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -490,7 +491,8 @@ public class DazArchiveInstaller(
 
     private static async Task CollectInstallableEntriesAsync(ApplicationDbContext dbContext, IArchive sourceArchive,
         Archive archiveEntity,
-        string workingDirectory, List<InstallableArchiveEntry> installableEntries, CancellationToken cancellationToken)
+        string workingDirectory, List<InstallableArchiveEntry> installableEntries, string libraryRoot,
+        CancellationToken cancellationToken)
     {
         foreach (var entry in sourceArchive.Entries.Where(x => !x.IsDirectory))
         {
@@ -503,9 +505,12 @@ public class DazArchiveInstaller(
             if (DazArchiveScanner.ShouldIgnoreArchiveEntry(normalizedEntryPath))
                 continue;
 
-            if (TryGetInstalledRelativePath(normalizedEntryPath, out var installedRelativePath, out var contentRoot))
+            if (DazArchiveScanner.TryGetInstalledRelativePath(normalizedEntryPath, out var installedRelativePath,
+                    out var contentRoot))
             {
                 archiveEntity.ContentRoot ??= contentRoot;
+                installedRelativePath =
+                    DazArchiveScanner.CanonicalizeInstalledRelativePath(installedRelativePath, libraryRoot);
 
                 var extractedPath = Path.Combine(workingDirectory,
                     $"{Guid.NewGuid():N}{Path.GetExtension(normalizedEntryPath)}");
@@ -557,7 +562,7 @@ public class DazArchiveInstaller(
 
             using var nestedSourceArchive = ArchiveFactory.OpenArchive(nestedArchivePath);
             await CollectInstallableEntriesAsync(dbContext, nestedSourceArchive, nestedArchive, workingDirectory,
-                installableEntries,
+                installableEntries, libraryRoot,
                 cancellationToken);
         }
     }
@@ -570,14 +575,16 @@ public class DazArchiveInstaller(
         return await destinationPathLockRegistry.ExecuteAsync(lockKey, async () =>
         {
             var libraryRoot = GetCanonicalPath(assetLibrary.Path);
-            var destinationPath = Path.Combine(libraryRoot, entry.InstalledRelativePath);
+            var installedRelativePath =
+                DazArchiveScanner.CanonicalizeInstalledRelativePath(entry.InstalledRelativePath, libraryRoot);
+            var destinationPath = Path.Combine(libraryRoot, installedRelativePath);
             var destinationDirectory = Path.GetDirectoryName(destinationPath);
 
             if (!string.IsNullOrWhiteSpace(destinationDirectory))
                 Directory.CreateDirectory(destinationDirectory);
 
-            var installedDirectory = Path.GetDirectoryName(entry.InstalledRelativePath) ?? string.Empty;
-            var fileName = Path.GetFileName(entry.InstalledRelativePath);
+            var installedDirectory = Path.GetDirectoryName(installedRelativePath) ?? string.Empty;
+            var fileName = Path.GetFileName(installedRelativePath);
 
             var installedFile = await dbContext.InstalledFiles
                 .Include(x => x.InstallRecords)
@@ -609,7 +616,7 @@ public class DazArchiveInstaller(
                 {
                     Archive = entry.Archive,
                     ArchiveRelativePath = entry.ArchiveRelativePath,
-                    InstalledRelativePath = entry.InstalledRelativePath,
+                    InstalledRelativePath = installedRelativePath,
                     FileHash = entry.FileHash,
                     FileSize = entry.FileSize
                 };
@@ -640,7 +647,7 @@ public class DazArchiveInstaller(
             {
                 Archive = entry.Archive,
                 ArchiveRelativePath = entry.ArchiveRelativePath,
-                InstalledRelativePath = entry.InstalledRelativePath,
+                InstalledRelativePath = installedRelativePath,
                 FileHash = hash,
                 FileSize = entry.FileSize
             };
@@ -665,7 +672,8 @@ public class DazArchiveInstaller(
         }, cancellationToken);
     }
 
-    private static async Task PrepareExistingArchiveForReinstallAsync(ApplicationDbContext dbContext, Archive rootArchive,
+    private static async Task PrepareExistingArchiveForReinstallAsync(ApplicationDbContext dbContext,
+        Archive rootArchive,
         CancellationToken cancellationToken)
     {
         var archiveIds = await GetArchiveTreeIdsAsync(dbContext, rootArchive.Id, cancellationToken);
@@ -776,25 +784,6 @@ public class DazArchiveInstaller(
 
         sha256.TransformFinalBlock([], 0, 0);
         return Convert.ToHexString(sha256.Hash!);
-    }
-
-    private static bool TryGetInstalledRelativePath(string archiveRelativePath, out string installedRelativePath,
-        out string contentRoot)
-    {
-        var segments = archiveRelativePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        for (var index = 0; index < segments.Length; index++)
-        {
-            if (!DazArchiveScanner.AssetRootDirectories.Contains(segments[index]))
-                continue;
-
-            installedRelativePath = Path.Combine(segments[index..]);
-            contentRoot = index == 0 ? string.Empty : string.Join('/', segments[..index]);
-            return true;
-        }
-
-        installedRelativePath = string.Empty;
-        contentRoot = string.Empty;
-        return false;
     }
 
     private static string NormalizeArchivePath(string key)

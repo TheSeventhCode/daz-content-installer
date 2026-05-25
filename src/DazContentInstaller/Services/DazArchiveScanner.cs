@@ -88,6 +88,39 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         ["light presets"] = "lights"
     };
 
+    private static readonly Dictionary<string, string> CanonicalSegmentNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["data"] = "data",
+        ["runtime"] = "Runtime",
+        ["people"] = "People",
+        ["props"] = "Props",
+        ["environments"] = "Environments",
+        ["scene"] = "Scene",
+        ["scenes"] = "Scenes",
+        ["scripts"] = "Scripts",
+        ["shader presets"] = "Shader Presets",
+        ["presets"] = "Presets",
+        ["lights"] = "Lights",
+        ["light presets"] = "Light Presets",
+        ["documentation"] = "Documentation",
+        ["templates"] = "Templates",
+        ["aniBlocks"] = "aniBlocks",
+        ["characters"] = "Characters",
+        ["anatomy"] = "Anatomy",
+        ["clothing"] = "Clothing",
+        ["wardrobe"] = "Wardrobe",
+        ["hair"] = "Hair",
+        ["vehicles"] = "Vehicles",
+        ["poses"] = "Poses",
+        ["expressions"] = "Expressions",
+        ["animations"] = "Animations",
+        ["materials"] = "Materials",
+        ["shaders"] = "Shaders",
+        ["morphs"] = "Morphs",
+        ["cameras"] = "Cameras",
+        ["textures"] = "Textures"
+    };
+
     public static string NormalizeCategory(string category)
     {
         return FolderToCanonicalCategory.TryGetValue(category, out var canonical) ? canonical : category;
@@ -192,7 +225,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
             if (!AssetRootDirectories.Contains(segments[index]))
                 continue;
 
-            installedRelativePath = Path.Combine(segments[index..]);
+            installedRelativePath = CanonicalizeInstalledRelativePath(Path.Combine(segments[index..]));
             contentRoot = index == 0 ? string.Empty : string.Join('/', segments[..index]);
             return true;
         }
@@ -200,6 +233,52 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         installedRelativePath = string.Empty;
         contentRoot = string.Empty;
         return false;
+    }
+
+    public static string CanonicalizeInstalledRelativePath(string installedRelativePath, string? libraryRoot = null)
+    {
+        if (string.IsNullOrWhiteSpace(installedRelativePath))
+            return installedRelativePath;
+
+        var segments = installedRelativePath.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, '/'],
+            StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+            return installedRelativePath;
+
+        var resolvedSegments = new string[segments.Length];
+        var currentPath = string.IsNullOrWhiteSpace(libraryRoot) ? null : Path.GetFullPath(libraryRoot);
+
+        for (var index = 0; index < segments.Length; index++)
+        {
+            var segment = segments[index];
+            resolvedSegments[index] = currentPath is null
+                ? ResolveCanonicalSegmentName(segment)
+                : ResolveSegmentAgainstLibrary(currentPath, segment);
+            currentPath = currentPath is null ? null : Path.Combine(currentPath, resolvedSegments[index]);
+        }
+
+        return Path.Combine(resolvedSegments);
+    }
+
+    public static string ResolveCanonicalSegmentName(string segment)
+    {
+        return CanonicalSegmentNames.TryGetValue(segment, out var canonical) ? canonical : segment;
+    }
+
+    private static string ResolveSegmentAgainstLibrary(string parentPath, string segment)
+    {
+        if (Directory.Exists(parentPath))
+        {
+            foreach (var entryPath in Directory.EnumerateFileSystemEntries(parentPath))
+            {
+                var entryName = Path.GetFileName(entryPath);
+                if (string.Equals(entryName, segment, StringComparison.OrdinalIgnoreCase))
+                    return entryName;
+            }
+        }
+
+        return ResolveCanonicalSegmentName(segment);
     }
 
     public static bool IsNestedArchive(string archiveRelativePath)

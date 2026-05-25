@@ -50,6 +50,23 @@ public class DazArchiveInstallerTests
     }
 
     [Fact]
+    public async Task InstallArchivesAsync_CanonicalizesRuntimePathCasing()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var archivePath = fixture.CreateArchive("runtime.zip", ("runtime/textures/thing.jpg", "image"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        File.Exists(Path.Combine(fixture.LibraryPath, "Runtime", "Textures", "thing.jpg")).ShouldBeTrue();
+        Directory.Exists(Path.Combine(fixture.LibraryPath, "runtime")).ShouldBeFalse();
+
+        var archive = await fixture.DbContext.Archives.Include(x => x.AssetFiles).SingleAsync();
+        archive.AssetFiles.Single().InstalledRelativePath
+            .ShouldBe(Path.Combine("Runtime", "Textures", "thing.jpg"));
+    }
+
+    [Fact]
     public async Task InstallArchivesAsync_RecordsReplacementsWithInstallRecords()
     {
         await using var fixture = await InstallerFixture.CreateAsync();
@@ -68,6 +85,80 @@ public class DazArchiveInstallerTests
         records[1].InstallRecordStatus.ShouldBe(InstallRecordStatus.Replaced);
         (await File.ReadAllTextAsync(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt")))
             .ShouldBe("second version");
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_ReplacesCaseVariantPathsWithSameLogicalDestination()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var firstArchive = fixture.CreateArchive("first.zip", ("data/shared/file.txt", "first"));
+        var secondArchive = fixture.CreateArchive("second.zip", ("DATA/shared/file.txt", "second version"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(firstArchive)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(secondArchive)]).ToListAsync();
+
+        (await fixture.DbContext.InstalledFiles.CountAsync()).ShouldBe(1);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt")).ShouldBeTrue();
+        Directory.Exists(Path.Combine(fixture.LibraryPath, "DATA")).ShouldBeFalse();
+
+        var records = (await fixture.DbContext.InstallRecords.ToListAsync()).OrderBy(x => x.InstalledAt).ToList();
+        records.Count.ShouldBe(2);
+        records[1].InstallRecordStatus.ShouldBe(InstallRecordStatus.Replaced);
+        (await File.ReadAllTextAsync(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt")))
+            .ShouldBe("second version");
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_SkipsCaseVariantPathsWithSameContent()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        var firstArchive = fixture.CreateArchive("first.zip", ("data/shared/file.txt", "same content"));
+        var secondArchive = fixture.CreateArchive("second.zip",
+            ("DATA/shared/file.txt", "same content"),
+            ("data/unique/extra.txt", "extra"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(firstArchive)]).ToListAsync();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(secondArchive)]).ToListAsync();
+
+        (await fixture.DbContext.InstalledFiles.CountAsync()).ShouldBe(2);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt")).ShouldBeTrue();
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "unique", "extra.txt")).ShouldBeTrue();
+        Directory.Exists(Path.Combine(fixture.LibraryPath, "DATA")).ShouldBeFalse();
+
+        var records = await fixture.DbContext.InstallRecords
+            .Include(x => x.AssetFile)
+            .Include(x => x.Archive)
+            .ToListAsync();
+        records.Count(x =>
+                x.Archive.ArchiveName == "second.zip" &&
+                x.AssetFile.InstalledRelativePath == Path.Combine("data", "shared", "file.txt") &&
+                x.InstallRecordStatus == InstallRecordStatus.Skipped)
+            .ShouldBe(1);
+        records.Count(x =>
+                x.Archive.ArchiveName == "second.zip" &&
+                x.AssetFile.InstalledRelativePath == Path.Combine("data", "unique", "extra.txt") &&
+                x.InstallRecordStatus == InstallRecordStatus.Installed)
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_UsesExistingLibraryPathCasing()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        Directory.CreateDirectory(Path.Combine(fixture.LibraryPath, "Data", "Author"));
+        var archivePath = fixture.CreateArchive("content.zip", ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        File.Exists(Path.Combine(fixture.LibraryPath, "Data", "Author", "product", "file.txt")).ShouldBeTrue();
+        Directory.Exists(Path.Combine(fixture.LibraryPath, "data")).ShouldBeFalse();
+
+        var archive = await fixture.DbContext.Archives.Include(x => x.AssetFiles).SingleAsync();
+        archive.AssetFiles.Single().InstalledRelativePath
+            .ShouldBe(Path.Combine("Data", "Author", "product", "file.txt"));
     }
 
     [Fact]

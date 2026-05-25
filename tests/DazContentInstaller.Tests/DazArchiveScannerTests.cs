@@ -96,6 +96,35 @@ public class DazArchiveScannerTests
     }
 
     [Theory]
+    [InlineData("DATA/author/product/file.duf", "data/author/product/file.duf")]
+    [InlineData("runtime/textures/a.jpg", "Runtime/Textures/a.jpg")]
+    [InlineData("RUNTIME/TEXTURES/a.jpg", "Runtime/Textures/a.jpg")]
+    public void CanonicalizeInstalledRelativePath_UsesDazDefaultCasing(string input, string expected)
+    {
+        DazArchiveScanner.CanonicalizeInstalledRelativePath(input).ShouldBe(expected);
+    }
+
+    [Fact]
+    public void CanonicalizeInstalledRelativePath_PrefersExistingLibraryCasing()
+    {
+        var libraryRoot = Path.Combine(Path.GetTempPath(), $"DazCanonicalPathTests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(libraryRoot, "Data", "Author"));
+
+        try
+        {
+            var canonical = DazArchiveScanner.CanonicalizeInstalledRelativePath(
+                "data/author/product/file.txt", libraryRoot);
+
+            canonical.ShouldBe(Path.Combine("Data", "Author", "product", "file.txt"));
+        }
+        finally
+        {
+            if (Directory.Exists(libraryRoot))
+                Directory.Delete(libraryRoot, true);
+        }
+    }
+
+    [Theory]
     [InlineData("\\data\\file.txt", "data/file.txt")]
     [InlineData("/Runtime/textures/a.jpg", "Runtime/textures/a.jpg")]
     public void NormalizeArchivePath_NormalizesSeparatorsAndLeadingSlashes(string input, string expected)
