@@ -99,6 +99,25 @@
                                             </Border>
                                         </Grid>
                                         <TextBlock Text="{Binding ScanSummary}" Classes="caption" />
+                                        <ItemsControl ItemsSource="{Binding SubArchives}"
+                                                      IsVisible="{Binding HasSubArchives}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="models:NestedArchiveSummary">
+                                                    <Border Background="{DynamicResource SurfaceBrush}"
+                                                            CornerRadius="8"
+                                                            Padding="8"
+                                                            Margin="0,0,0,6">
+                                                        <StackPanel Spacing="4">
+                                                            <TextBlock Text="{Binding EffectiveDisplayName}" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding ArchiveName}"
+                                                                       Classes="caption"
+                                                                       IsVisible="{Binding HasDistinctDisplayName}" />
+                                                            <TextBlock Text="{Binding Summary}" Classes="caption" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                         <ItemsControl ItemsSource="{Binding AssetTypes}">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
@@ -282,28 +301,129 @@
                                  PlaceholderText="Search files..."
                                  Text="{Binding ArchiveFileSearchText}" />
 
-                        <ListBox Grid.Row="4" ItemsSource="{Binding FilteredSelectedArchiveFiles}">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ArchiveFileRecordViewModel">
-                                    <Border Background="{DynamicResource SurfaceAltBrush}"
-                                            CornerRadius="8"
-                                            Padding="10"
-                                            Margin="0,0,0,8">
-                                        <Grid ColumnDefinitions="*,Auto">
-                                            <StackPanel Spacing="4">
-                                                <TextBlock Text="{Binding InstalledRelativePath}" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding ArchiveRelativePath}" Classes="caption" TextWrapping="Wrap" />
-                                                <TextBlock Text="{Binding FileSize, Converter={StaticResource FileSizeConverter}}" Classes="caption" />
+                        <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding FilteredSelectedArchiveFileGroups}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ArchiveFileGroupViewModel">
+                                        <StackPanel Spacing="8"
+                                                    Margin="0,0,0,12"
+                                                    HorizontalAlignment="Stretch">
+                                            <Expander IsExpanded="{Binding IsExpanded}"
+                                                      IsVisible="{Binding CanCollapse}"
+                                                      HorizontalAlignment="Stretch"
+                                                      HorizontalContentAlignment="Stretch">
+                                                <Expander.Header>
+                                                    <Grid HorizontalAlignment="Stretch" ColumnDefinitions="*,Auto">
+                                                        <StackPanel Spacing="2">
+                                                            <TextBlock Text="{Binding EffectiveDisplayName}" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding ArchiveName}"
+                                                                       Classes="caption"
+                                                                       IsVisible="{Binding HasDistinctDisplayName}" />
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding FileCountSummary}"
+                                                                   Classes="caption"
+                                                                   VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </Expander.Header>
+                                                <ItemsControl ItemsSource="{Binding FilteredFiles}"
+                                                              Margin="0,8,0,0"
+                                                              HorizontalAlignment="Stretch">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:ArchiveFileRecordViewModel">
+                                                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                                                    CornerRadius="8"
+                                                                    Padding="10"
+                                                                    Margin="0,0,0,8"
+                                                                    HorizontalAlignment="Stretch">
+                                                                <Grid ColumnDefinitions="*,Auto">
+                                                                    <StackPanel Spacing="4">
+                                                                        <TextBlock Text="{Binding InstalledRelativePath}" FontWeight="SemiBold" />
+                                                                        <TextBlock Text="{Binding ArchiveRelativePath}" Classes="caption" TextWrapping="Wrap" />
+                                                                        <TextBlock Text="{Binding FileSize, Converter={StaticResource FileSizeConverter}}" Classes="caption" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Grid.Column="1" Spacing="4" HorizontalAlignment="Right">
+                                                                        <TextBlock Text="{Binding Status}" />
+                                                                        <TextBlock Text="{Binding InstalledAt}" Classes="caption" />
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Expander>
+
+                                            <StackPanel Spacing="8"
+                                                        IsVisible="{Binding ShowRootGroupHeader}"
+                                                        HorizontalAlignment="Stretch">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <StackPanel Spacing="2">
+                                                        <TextBlock Text="{Binding EffectiveDisplayName}" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding ArchiveName}"
+                                                                   Classes="caption"
+                                                                   IsVisible="{Binding HasDistinctDisplayName}" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding FileCountSummary}"
+                                                               Classes="caption"
+                                                               VerticalAlignment="Center" />
+                                                </Grid>
+                                                <ItemsControl ItemsSource="{Binding FilteredFiles}"
+                                                              HorizontalAlignment="Stretch">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:ArchiveFileRecordViewModel">
+                                                            <Border Background="{DynamicResource SurfaceAltBrush}"
+                                                                    CornerRadius="8"
+                                                                    Padding="10"
+                                                                    Margin="0,0,0,8"
+                                                                    HorizontalAlignment="Stretch">
+                                                                <Grid ColumnDefinitions="*,Auto">
+                                                                    <StackPanel Spacing="4">
+                                                                        <TextBlock Text="{Binding InstalledRelativePath}" FontWeight="SemiBold" />
+                                                                        <TextBlock Text="{Binding ArchiveRelativePath}" Classes="caption" TextWrapping="Wrap" />
+                                                                        <TextBlock Text="{Binding FileSize, Converter={StaticResource FileSizeConverter}}" Classes="caption" />
+                                                                    </StackPanel>
+                                                                    <StackPanel Grid.Column="1" Spacing="4" HorizontalAlignment="Right">
+                                                                        <TextBlock Text="{Binding Status}" />
+                                                                        <TextBlock Text="{Binding InstalledAt}" Classes="caption" />
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
                                             </StackPanel>
-                                            <StackPanel Grid.Column="1" Spacing="4" HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding Status}" />
-                                                <TextBlock Text="{Binding InstalledAt}" Classes="caption" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
+
+                                            <ItemsControl ItemsSource="{Binding FilteredFiles}"
+                                                          IsVisible="{Binding ShowFlatFiles}"
+                                                          HorizontalAlignment="Stretch">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:ArchiveFileRecordViewModel">
+                                                        <Border Background="{DynamicResource SurfaceAltBrush}"
+                                                                CornerRadius="8"
+                                                                Padding="10"
+                                                                Margin="0,0,0,8"
+                                                                HorizontalAlignment="Stretch">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <StackPanel Spacing="4">
+                                                                    <TextBlock Text="{Binding InstalledRelativePath}" FontWeight="SemiBold" />
+                                                                    <TextBlock Text="{Binding ArchiveRelativePath}" Classes="caption" TextWrapping="Wrap" />
+                                                                    <TextBlock Text="{Binding FileSize, Converter={StaticResource FileSizeConverter}}" Classes="caption" />
+                                                                </StackPanel>
+                                                                <StackPanel Grid.Column="1" Spacing="4" HorizontalAlignment="Right">
+                                                                    <TextBlock Text="{Binding Status}" />
+                                                                    <TextBlock Text="{Binding InstalledAt}" Classes="caption" />
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
                     </Grid>
                 </Grid>
             </Border>

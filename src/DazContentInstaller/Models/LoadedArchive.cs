@@ -100,6 +100,9 @@ public partial class LoadedArchive : ViewModelBase
         ? "No installable DAZ content found yet"
         : $"{TotalFiles:N0} file(s), {FileSizeFormatter.Format(InstallableSizeBytes)}";
 
+    public ObservableCollection<NestedArchiveSummary> SubArchives { get; } = [];
+    public bool HasSubArchives => SubArchives.Count > 0;
+
     public DazArchiveScanResult? CachedScanResult { get; private set; }
 
     public LoadedArchive(string archivePath)
@@ -113,11 +116,7 @@ public partial class LoadedArchive : ViewModelBase
 
     public void ApplyScan(DazArchiveScanResult scan)
     {
-        CachedScanResult = scan;
-        DisplayName = string.IsNullOrWhiteSpace(scan.DisplayName)
-            ? Path.GetFileName(ArchivePath)
-            : scan.DisplayName;
-        OnPropertyChanged(nameof(DisplayName));
+        ApplyScanMetadata(scan);
         TotalFiles = scan.InstallableFileCount;
         InstallableSizeBytes = scan.InstallableSize;
         ContentRoot = scan.ContentRoot;
@@ -127,9 +126,30 @@ public partial class LoadedArchive : ViewModelBase
         Categories.Clear();
         foreach (var category in scan.Categories)
             Categories.Add(category);
+        RefreshSubArchives(scan);
         ArchiveStatus = TotalFiles == 0 ? ArchiveStatus.Error : ArchiveStatus.Ready;
         ErrorMessage = TotalFiles == 0 ? "No DAZ content directories were found in this archive." : null;
         StatusText = TotalFiles == 0 ? ErrorMessage : "Scanned and ready to install";
         ProgressPercent = TotalFiles == 0 ? 0 : 100;
+    }
+
+    public void ApplyScanMetadata(DazArchiveScanResult scan)
+    {
+        CachedScanResult = scan;
+        DisplayName = scan.RootEffectiveDisplayName;
+        RefreshSubArchives(scan);
+        OnPropertyChanged(nameof(DisplayName));
+    }
+
+    private void RefreshSubArchives(DazArchiveScanResult scan)
+    {
+        SubArchives.Clear();
+        if (scan.ContentBearingNestedArchives.Count > 1)
+        {
+            foreach (var nested in scan.ContentBearingNestedArchives)
+                SubArchives.Add(NestedArchiveSummary.FromScanResult(nested));
+        }
+
+        OnPropertyChanged(nameof(HasSubArchives));
     }
 }

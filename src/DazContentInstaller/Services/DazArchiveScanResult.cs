@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using DazContentInstaller.Database;
@@ -20,6 +21,48 @@ public sealed class DazArchiveScanResult
 
     public ulong InstallableSize => InstallableFiles.Aggregate(0UL, (sum, file) => sum + file.FileSize)
                                     + NestedArchives.Aggregate(0UL, (sum, archive) => sum + archive.InstallableSize);
+
+    public bool HasDirectInstallableContent => InstallableFiles.Count > 0;
+
+    public bool HasInstallableContent => InstallableFileCount > 0;
+
+    public string EffectiveDisplayName => string.IsNullOrWhiteSpace(DisplayName) ? ArchiveName : DisplayName;
+
+    public string? ResolveRootDisplayName()
+    {
+        if (!string.IsNullOrWhiteSpace(DisplayName))
+            return DisplayName;
+
+        var contentBearingChildren = ContentBearingNestedArchives;
+        if (contentBearingChildren.Count != 1)
+            return null;
+
+        var childDisplayName = contentBearingChildren[0].DisplayName;
+        return string.IsNullOrWhiteSpace(childDisplayName) ? null : childDisplayName;
+    }
+
+    public string RootEffectiveDisplayName => ResolveRootDisplayName() ?? ArchiveName;
+
+    public IReadOnlyList<DazArchiveScanResult> ContentBearingNestedArchives =>
+        NestedArchives.Where(x => x.HasInstallableContent).ToList();
+
+    public IEnumerable<DazArchiveScanEntry> GetAllInstallableFiles()
+    {
+        foreach (var file in InstallableFiles)
+            yield return file;
+
+        foreach (var nested in NestedArchives)
+        {
+            foreach (var file in nested.GetAllInstallableFiles())
+                yield return file;
+        }
+    }
+
+    public DazArchiveScanResult? FindNestedScan(string normalizedEntryPath)
+    {
+        return NestedArchives.FirstOrDefault(x =>
+            string.Equals(x.ArchivePath, normalizedEntryPath, StringComparison.OrdinalIgnoreCase));
+    }
 }
 
 public sealed class DazArchiveScanEntry

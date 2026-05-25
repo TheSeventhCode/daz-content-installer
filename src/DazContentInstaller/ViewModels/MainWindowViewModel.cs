@@ -35,8 +35,8 @@ public partial class MainWindowViewModel(
     public ObservableCollection<InstalledArchiveViewModel> SelectedInstalledArchives { get; } = [];
     public ObservableCollection<LoadedArchive> SelectedQueueArchives { get; } = [];
     public ObservableCollection<AssetLibraryItemViewModel> AssetLibraries { get; } = [];
-    private ObservableCollection<ArchiveFileRecordViewModel> SelectedArchiveFiles { get; } = [];
-    public ObservableCollection<ArchiveFileRecordViewModel> FilteredSelectedArchiveFiles { get; } = [];
+    private ObservableCollection<ArchiveFileGroupViewModel> SelectedArchiveFileGroups { get; } = [];
+    public ObservableCollection<ArchiveFileGroupViewModel> FilteredSelectedArchiveFileGroups { get; } = [];
 
     private bool _selectionHandlersRegistered;
 
@@ -84,10 +84,18 @@ public partial class MainWindowViewModel(
 
     [ObservableProperty] private partial ulong SelectedAssetLibraryTotalContentSize { get; set; }
 
-    public string ArchiveFileListSummary =>
-        string.IsNullOrWhiteSpace(ArchiveFileSearchText)
-            ? $"{SelectedArchiveFiles.Count} entries"
-            : $"{FilteredSelectedArchiveFiles.Count} of {SelectedArchiveFiles.Count} entries";
+    public string ArchiveFileListSummary
+    {
+        get
+        {
+            var total = SelectedArchiveFileGroups.Sum(x => x.Files.Count);
+            if (string.IsNullOrWhiteSpace(ArchiveFileSearchText))
+                return $"{total} entries";
+
+            var filtered = FilteredSelectedArchiveFileGroups.Sum(x => x.FilteredFiles.Count);
+            return $"{filtered} of {total} entries";
+        }
+    }
 
     public string SelectedAssetLibrarySummary
     {
@@ -675,34 +683,70 @@ public partial class MainWindowViewModel(
 
     private async Task LoadSelectedArchiveDetailsAsync(InstalledArchiveViewModel? archive)
     {
-        SelectedArchiveFiles.Clear();
-        FilteredSelectedArchiveFiles.Clear();
+        SelectedArchiveFileGroups.Clear();
+        FilteredSelectedArchiveFileGroups.Clear();
         OnPropertyChanged(nameof(ArchiveFileListSummary));
         if (archive is null)
             return;
 
         await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var archiveIds = await GetArchiveTreeIdsAsync(dbContext, archive.Id);
+        var archivesInTree = await dbContext.Archives
+            .Where(x => archiveIds.Contains(x.Id))
+            .ToListAsync();
         var records = await dbContext.InstallRecords
             .Include(x => x.AssetFile)
+            .Include(x => x.Archive)
             .Where(x => archiveIds.Contains(x.ArchiveId))
             .ToListAsync();
 
-        foreach (var record in records
-                     .OrderBy(x => x.AssetFile.InstalledRelativePath, StringComparer.OrdinalIgnoreCase)
-                     .ThenBy(x => x.InstalledAt))
+        var recordsByArchiveId = records
+            .GroupBy(x => x.ArchiveId)
+            .ToDictionary(x => x.Key, x => x.ToList());
+
+        var groups = new List<ArchiveFileGroupViewModel>();
+
+        foreach (var archiveEntity in archivesInTree
+                     .OrderBy(x => x.Id == archive.Id ? 0 : 1)
+                     .ThenBy(x => ArchiveDisplayName.GetEffectiveDisplayName(x.ArchiveName, x.DisplayName),
+                         StringComparer.OrdinalIgnoreCase))
         {
-            SelectedArchiveFiles.Add(new ArchiveFileRecordViewModel
+            if (!recordsByArchiveId.TryGetValue(archiveEntity.Id, out var archiveRecords))
+                continue;
+
+            var group = new ArchiveFileGroupViewModel
             {
-                ArchiveRelativePath = record.AssetFile.ArchiveRelativePath,
-                InstalledRelativePath = record.AssetFile.InstalledRelativePath,
-                FileHash = record.AssetFile.FileHash,
-                FileSize = record.AssetFile.FileSize,
-                Status = record.InstallRecordStatus,
-                IsOverridden = record.HasBeenOverriden,
-                InstalledAt = record.InstalledAt
-            });
+                ArchiveId = archiveEntity.Id,
+                ArchiveName = archiveEntity.ArchiveName,
+                DisplayName = archiveEntity.DisplayName,
+                IsSubArchive = archiveEntity.ParentArchiveId is not null,
+                IsExpanded = archiveEntity.ParentArchiveId is null
+            };
+
+            foreach (var record in archiveRecords
+                         .OrderBy(x => x.AssetFile.InstalledRelativePath, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(x => x.InstalledAt))
+            {
+                group.Files.Add(new ArchiveFileRecordViewModel
+                {
+                    ArchiveId = archiveEntity.Id,
+                    OwnerArchiveName = archiveEntity.ArchiveName,
+                    OwnerDisplayName = archiveEntity.DisplayName,
+                    ArchiveRelativePath = record.AssetFile.ArchiveRelativePath,
+                    InstalledRelativePath = record.AssetFile.InstalledRelativePath,
+                    FileHash = record.AssetFile.FileHash,
+                    FileSize = record.AssetFile.FileSize,
+                    Status = record.InstallRecordStatus,
+                    IsOverridden = record.HasBeenOverriden,
+                    InstalledAt = record.InstalledAt
+                });
+            }
+
+            groups.Add(group);
         }
+
+        foreach (var group in ArchiveFileGroupBuilder.Build(groups, archive.Id, archive.ArchiveName, archive.DisplayName))
+            SelectedArchiveFileGroups.Add(group);
 
         ApplyArchiveFileFilter();
         OnPropertyChanged(nameof(ArchiveFileListSummary));
@@ -777,16 +821,29 @@ public partial class MainWindowViewModel(
 
     private void ApplyArchiveFileFilter()
     {
-        FilteredSelectedArchiveFiles.Clear();
+        FilteredSelectedArchiveFileGroups.Clear();
 
         var query = ArchiveFileSearchText.Trim();
-        var matches = (string.IsNullOrWhiteSpace(query)
-                ? SelectedArchiveFiles
-                : SelectedArchiveFiles.Where(x => MatchesArchiveFileSearch(x, query)))
-            .OrderBy(x => x.InstalledRelativePath, StringComparer.OrdinalIgnoreCase);
+        var hasQuery = !string.IsNullOrWhiteSpace(query);
+        foreach (var group in SelectedArchiveFileGroups)
+        {
+            group.FilteredFiles.Clear();
+            var matches = (hasQuery
+                    ? group.Files.Where(x => MatchesArchiveFileSearch(x, query))
+                    : group.Files)
+                .OrderBy(x => x.InstalledRelativePath, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var file in matches)
-            FilteredSelectedArchiveFiles.Add(file);
+            foreach (var file in matches)
+                group.FilteredFiles.Add(file);
+
+            if (group.IsSubArchive)
+                group.IsExpanded = hasQuery && group.FilteredFiles.Count > 0;
+
+            group.RefreshFilterPresentation();
+
+            if (group.FilteredFiles.Count > 0)
+                FilteredSelectedArchiveFileGroups.Add(group);
+        }
     }
 
     private static bool MatchesInstalledArchiveSearch(InstalledArchiveViewModel archive, string query)
@@ -818,6 +875,9 @@ public partial class MainWindowViewModel(
     {
         return Contains(file.InstalledRelativePath, query)
                || Contains(file.ArchiveRelativePath, query)
+               || Contains(file.OwnerArchiveName, query)
+               || Contains(file.OwnerDisplayName, query)
+               || Contains(file.OwnerEffectiveDisplayName, query)
                || Contains(file.Status.ToString(), query);
     }
 

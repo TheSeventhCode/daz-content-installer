@@ -201,4 +201,61 @@ public class DazArchiveScannerTests
 
         result.DisplayName.ShouldBeNull();
     }
+
+    [Fact]
+    public async Task ScanArchiveAsync_ReadsDisplayNameFromNestedSupplementDsx()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        const string supplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Business Presentation Poses"/>
+            </ProductSupplement>
+            """;
+        var innerArchivePath = fixture.CreateArchive("inner.zip",
+            ("Supplement.dsx", supplement),
+            ("data/author/product/file.duf", "content"));
+        var outerArchivePath = fixture.CreateArchiveWithFiles("bundle.zip",
+            ("IM0001-product.zip", innerArchivePath));
+
+        var result = await scanner.ScanArchiveAsync(outerArchivePath);
+
+        result.DisplayName.ShouldBeNull();
+        result.ResolveRootDisplayName().ShouldBe("Business Presentation Poses");
+        result.RootEffectiveDisplayName.ShouldBe("Business Presentation Poses");
+        result.ContentBearingNestedArchives.Count.ShouldBe(1);
+        result.ContentBearingNestedArchives[0].DisplayName.ShouldBe("Business Presentation Poses");
+        result.ContentBearingNestedArchives[0].ArchivePath.ShouldBe("IM0001-product.zip");
+    }
+
+    [Fact]
+    public async Task ScanArchiveAsync_KeepsOuterDisplayNameWhenParentHasSupplementDsx()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var directoryService = new DirectoryService(fixture.SettingsService.CurrentSettings);
+        var scanner = new DazArchiveScanner(directoryService);
+        const string outerSupplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Outer Bundle"/>
+            </ProductSupplement>
+            """;
+        const string innerSupplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Inner Product"/>
+            </ProductSupplement>
+            """;
+        var innerArchivePath = fixture.CreateArchive("inner.zip",
+            ("Supplement.dsx", innerSupplement),
+            ("data/author/product/file.duf", "content"));
+        var outerArchivePath = fixture.CreateCompositeArchive("bundle.zip",
+            [("Supplement.dsx", outerSupplement)],
+            ("IM0001-product.zip", innerArchivePath));
+
+        var result = await scanner.ScanArchiveAsync(outerArchivePath);
+
+        result.DisplayName.ShouldBe("Outer Bundle");
+        result.ContentBearingNestedArchives.Count.ShouldBe(1);
+        result.ContentBearingNestedArchives[0].DisplayName.ShouldBe("Inner Product");
+    }
 }

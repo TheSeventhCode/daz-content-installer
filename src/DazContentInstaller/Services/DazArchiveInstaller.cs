@@ -289,7 +289,7 @@ public class DazArchiveInstaller(
         await dbContext.SaveChangesAsync(cancellationToken);
         archive.ArchiveId = archiveEntity.Id;
 
-        var scanResult = archive.CachedScanResult;
+        var scanResult = existingArchiveEntity is not null ? null : archive.CachedScanResult;
         Exception? scanFailure = null;
         if (scanResult is null)
         {
@@ -317,12 +317,13 @@ public class DazArchiveInstaller(
             throw new InvalidOperationException("Archive scan did not return a result.");
 
         archiveEntity.ContentRoot = scanResult.ContentRoot;
-        archiveEntity.DisplayName = scanResult.DisplayName;
+        archiveEntity.DisplayName = scanResult.ResolveRootDisplayName();
         archiveEntity.AssetTypes = AssetTypeCollection.Serialize(scanResult.AssetTypes);
         archiveEntity.Categories = SerializeCategories(scanResult.Categories);
         archive.TotalFiles = scanResult.InstallableFileCount;
         archive.InstallableSizeBytes = scanResult.InstallableSize;
         archive.ContentRoot = scanResult.ContentRoot;
+        archive.ApplyScanMetadata(scanResult);
         archive.AssetTypes.Clear();
         foreach (var assetType in scanResult.AssetTypes)
             archive.AssetTypes.Add(assetType);
@@ -353,7 +354,7 @@ public class DazArchiveInstaller(
             using var sourceArchive = ArchiveFactory.OpenArchive(sourceInfo.FullName);
             await CollectInstallableEntriesAsync(dbContext, sourceArchive, archiveEntity,
                 workingDirectory.DirectoryInfo.FullName,
-                installableEntries, libraryRoot, cancellationToken);
+                installableEntries, libraryRoot, scanResult, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -493,7 +494,7 @@ public class DazArchiveInstaller(
     private static async Task CollectInstallableEntriesAsync(ApplicationDbContext dbContext, IArchive sourceArchive,
         Archive archiveEntity,
         string workingDirectory, List<InstallableArchiveEntry> installableEntries, string libraryRoot,
-        CancellationToken cancellationToken)
+        DazArchiveScanResult? scanNode, CancellationToken cancellationToken)
     {
         foreach (var entry in sourceArchive.Entries.Where(x => !x.IsDirectory))
         {
@@ -548,6 +549,7 @@ public class DazArchiveInstaller(
             }
 
             var nestedInfo = new FileInfo(nestedArchivePath);
+            var nestedScan = scanNode?.FindNestedScan(normalizedEntryPath);
             var nestedArchive = new Archive
             {
                 ArchiveName = Path.GetFileName(normalizedEntryPath),
@@ -557,15 +559,27 @@ public class DazArchiveInstaller(
                 ParentArchive = archiveEntity,
                 InstallStartedAt = archiveEntity.InstallStartedAt
             };
+            ApplyScanMetadataToArchive(nestedArchive, nestedScan);
 
             dbContext.Archives.Add(nestedArchive);
             await dbContext.SaveChangesAsync(cancellationToken);
 
             using var nestedSourceArchive = ArchiveFactory.OpenArchive(nestedArchivePath);
             await CollectInstallableEntriesAsync(dbContext, nestedSourceArchive, nestedArchive, workingDirectory,
-                installableEntries, libraryRoot,
+                installableEntries, libraryRoot, nestedScan,
                 cancellationToken);
         }
+    }
+
+    private static void ApplyScanMetadataToArchive(Archive archiveEntity, DazArchiveScanResult? scan)
+    {
+        if (scan is null)
+            return;
+
+        archiveEntity.DisplayName = scan.DisplayName;
+        archiveEntity.ContentRoot = scan.ContentRoot;
+        archiveEntity.AssetTypes = AssetTypeCollection.Serialize(scan.AssetTypes);
+        archiveEntity.Categories = SerializeCategories(scan.Categories);
     }
 
     private async Task<InstallEntryResult> InstallEntryAsync(ApplicationDbContext dbContext, AssetLibrary assetLibrary,
@@ -693,6 +707,8 @@ public class DazArchiveInstaller(
             .Where(x => x.ArchiveId == rootArchive.Id)
             .ToListAsync(cancellationToken);
         dbContext.AssetFiles.RemoveRange(rootAssetFiles);
+
+        rootArchive.DisplayName = null;
 
         await dbContext.SaveChangesAsync(cancellationToken);
 

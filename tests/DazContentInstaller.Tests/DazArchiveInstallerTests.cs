@@ -55,6 +55,150 @@ public class DazArchiveInstallerTests
     }
 
     [Fact]
+    public async Task InstallArchivesAsync_PersistsNestedDisplayNameFromSupplementDsx()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        const string supplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Business Presentation Poses"/>
+            </ProductSupplement>
+            """;
+        var innerArchivePath = fixture.CreateArchive("inner.zip",
+            ("Supplement.dsx", supplement),
+            ("data/author/product/file.txt", "hello"));
+        var outerArchivePath = fixture.CreateArchiveWithFiles("bundle.zip",
+            ("IM0001-product.zip", innerArchivePath));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(outerArchivePath)])
+            .ToListAsync();
+
+        var archives = await fixture.DbContext.Archives
+            .OrderBy(x => x.ParentArchiveId == null ? 0 : 1)
+            .ToListAsync();
+        archives.Count.ShouldBe(2);
+
+        var root = archives.Single(x => x.ParentArchiveId is null);
+        var child = archives.Single(x => x.ParentArchiveId == root.Id);
+
+        root.ArchiveName.ShouldBe("bundle.zip");
+        root.DisplayName.ShouldBe("Business Presentation Poses");
+        child.ArchiveName.ShouldBe("IM0001-product.zip");
+        child.DisplayName.ShouldBe("Business Presentation Poses");
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "author", "product", "file.txt")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task InstallArchivesAsync_PersistsMultipleNestedDisplayNames()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        const string firstSupplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="First Product"/>
+            </ProductSupplement>
+            """;
+        const string secondSupplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Second Product"/>
+            </ProductSupplement>
+            """;
+        var firstInner = fixture.CreateArchive("first-inner.zip",
+            ("Supplement.dsx", firstSupplement),
+            ("data/first/file.txt", "first"));
+        var secondInner = fixture.CreateArchive("second-inner.zip",
+            ("Supplement.dsx", secondSupplement),
+            ("data/second/file.txt", "second"));
+        var outerArchivePath = fixture.CreateCompositeArchive("bundle.zip", [],
+            ("first-product.zip", firstInner),
+            ("second-product.zip", secondInner));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(outerArchivePath)])
+            .ToListAsync();
+
+        var childArchives = await fixture.DbContext.Archives
+            .Where(x => x.ParentArchiveId != null)
+            .OrderBy(x => x.ArchiveName)
+            .ToListAsync();
+
+        childArchives.Count.ShouldBe(2);
+        childArchives[0].DisplayName.ShouldBe("First Product");
+        childArchives[1].DisplayName.ShouldBe("Second Product");
+    }
+
+    [Fact]
+    public async Task ReinstallArchiveAsync_UpdatesNestedDisplayNameFromSupplementDsx()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        const string supplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Business Presentation Poses"/>
+            </ProductSupplement>
+            """;
+        var innerArchivePath = fixture.CreateArchive("inner.zip",
+            ("Supplement.dsx", supplement),
+            ("data/author/product/file.txt", "hello"));
+        var outerArchivePath = fixture.CreateArchiveWithFiles("bundle.zip",
+            ("IM0001-product.zip", innerArchivePath));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(outerArchivePath)]).ToListAsync();
+
+        var root = await fixture.DbContext.Archives.SingleAsync(x => x.ParentArchiveId == null);
+        var child = await fixture.DbContext.Archives.SingleAsync(x => x.ParentArchiveId == root.Id);
+        child.DisplayName = null;
+        await fixture.DbContext.SaveChangesAsync();
+
+        await installer.UninstallArchiveAsync(root.Id);
+        fixture.DbContext.ChangeTracker.Clear();
+
+        var queueItem = new LoadedArchive(Path.Combine(fixture.BackupPath, "bundle.zip"))
+        {
+            ArchiveId = root.Id
+        };
+
+        await installer.ReinstallArchiveAsync(root.Id, queueItem).ToListAsync();
+
+        fixture.DbContext.ChangeTracker.Clear();
+        child = await fixture.DbContext.Archives.SingleAsync(x => x.ParentArchiveId == root.Id);
+        child.DisplayName.ShouldBe("Business Presentation Poses");
+    }
+
+    [Fact]
+    public void LoadedArchive_ApplyScan_PromotesSingleSubArchiveDisplayName()
+    {
+        var scan = new DazArchiveScanResult
+        {
+            ArchiveName = "bundle.zip",
+            ArchivePath = "/tmp/bundle.zip",
+            NestedArchives =
+            [
+                new DazArchiveScanResult
+                {
+                    ArchiveName = "product.zip",
+                    ArchivePath = "product.zip",
+                    DisplayName = "Business Poses",
+                    InstallableFiles =
+                    [
+                        new DazArchiveScanEntry
+                        {
+                            ArchiveRelativePath = "data/a/file.txt",
+                            InstalledRelativePath = "data/a/file.txt",
+                            FileSize = 10
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var loaded = new LoadedArchive("/tmp/bundle.zip");
+        loaded.ApplyScan(scan);
+
+        loaded.DisplayName.ShouldBe("Business Poses");
+        loaded.HasSubArchives.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task InstallArchivesAsync_InstallsContentFromNestedArchives()
     {
         await using var fixture = await InstallerFixture.CreateAsync();
@@ -205,6 +349,42 @@ public class DazArchiveInstallerTests
         archive.AssetFiles.Count.ShouldBe(1);
         archive.AssetFiles.Single().InstalledRelativePath
             .ShouldBe(Path.Combine("data", "author", "product", "file.txt"));
+    }
+
+    [Fact]
+    public async Task ReinstallArchiveAsync_UpdatesDisplayNameFromSupplementDsx()
+    {
+        await using var fixture = await InstallerFixture.CreateAsync();
+        const string supplement = """
+            <ProductSupplement VERSION="0.1">
+              <ProductName VALUE="Business Presentation Poses"/>
+            </ProductSupplement>
+            """;
+        var archivePath = fixture.CreateArchive("content.zip",
+            ("Supplement.dsx", supplement),
+            ("data/author/product/file.txt", "hello"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var archiveEntity = await fixture.DbContext.Archives.SingleAsync();
+        archiveEntity.DisplayName = null;
+        await fixture.DbContext.SaveChangesAsync();
+
+        await installer.UninstallArchiveAsync(archiveEntity.Id);
+        fixture.DbContext.ChangeTracker.Clear();
+
+        var queueItem = new LoadedArchive(Path.Combine(fixture.BackupPath, "content.zip"))
+        {
+            ArchiveId = archiveEntity.Id
+        };
+
+        await installer.ReinstallArchiveAsync(archiveEntity.Id, queueItem).ToListAsync();
+
+        fixture.DbContext.ChangeTracker.Clear();
+        archiveEntity = await fixture.DbContext.Archives.SingleAsync();
+        archiveEntity.DisplayName.ShouldBe("Business Presentation Poses");
+        queueItem.DisplayName.ShouldBe("Business Presentation Poses");
     }
 
     [Fact]
@@ -556,6 +736,25 @@ public class DazArchiveInstallerTests
             var archivePath = Path.Combine(_rootPath, fileName);
             using var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create);
             foreach (var (entryPath, sourcePath) in files)
+                archive.CreateEntryFromFile(sourcePath, entryPath);
+
+            return archivePath;
+        }
+
+        public string CreateCompositeArchive(string fileName,
+            (string EntryPath, string Content)[] textEntries,
+            params (string EntryPath, string SourcePath)[] fileEntries)
+        {
+            var archivePath = Path.Combine(_rootPath, fileName);
+            using var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create);
+            foreach (var (entryPath, content) in textEntries)
+            {
+                var entry = archive.CreateEntry(entryPath);
+                using var writer = new StreamWriter(entry.Open());
+                writer.Write(content);
+            }
+
+            foreach (var (entryPath, sourcePath) in fileEntries)
                 archive.CreateEntryFromFile(sourcePath, entryPath);
 
             return archivePath;
