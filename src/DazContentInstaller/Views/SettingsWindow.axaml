@@ -4,13 +4,33 @@
         x:Class="DazContentInstaller.Views.SettingsWindow"
         x:DataType="vm:SettingsWindowViewModel"
         Width="900"
-        Height="620"
+        Height="800"
         MinWidth="780"
-        MinHeight="560"
+        MinHeight="680"
         Title="Settings">
-    <Grid RowDefinitions="*,Auto" Margin="16">
-        <Grid ColumnDefinitions="280,16,*">
-            <Border Classes="card" Grid.Column="0">
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Bottom"
+                BorderBrush="{DynamicResource BorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding StatusText}"
+                           VerticalAlignment="Center"
+                           Classes="caption" />
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                    <Button Content="Cancel" Command="{Binding CancelCommand}" Classes="secondary" />
+                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="primary" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Margin="16" ColumnDefinitions="280,16,*" RowDefinitions="*">
+            <Border Classes="card"
+                    Grid.Column="0"
+                    VerticalAlignment="Stretch">
                 <Grid RowDefinitions="Auto,12,*,12,Auto">
                     <TextBlock Text="Asset Libraries" Classes="sectionTitle" />
                     <ListBox Grid.Row="2"
@@ -41,15 +61,19 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Column="2" Classes="card">
-                <ScrollViewer>
-                    <StackPanel Spacing="16">
-                        <TextBlock Text="Library Details" Classes="sectionTitle" />
+            <Grid Grid.Column="2" RowDefinitions="Auto,16,*">
+                <Border Classes="card" Grid.Row="0">
+                    <StackPanel Spacing="12">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Library Details" Classes="sectionTitle" />
+                            <TextBlock Text="Settings for the selected asset library."
+                                       Classes="caption" />
+                        </StackPanel>
 
-                        <Grid ColumnDefinitions="140,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="180,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
                             <TextBlock Text="Name" VerticalAlignment="Center" />
                             <TextBox Grid.Column="1" Text="{Binding SelectedAssetLibrary.Name}" />
-                            
+
                             <TextBlock Grid.Row="1" Text="Path" VerticalAlignment="Center" />
                             <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SelectedAssetLibrary.Path}" />
                             <Button Grid.Row="1" Grid.Column="2" Content="Browse"
@@ -70,58 +94,70 @@
                                 Command="{Binding SetSelectedLibraryAsDefaultCommand}"
                                 Classes="secondary"
                                 HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
 
-                        <TextBlock Text="Application Settings" Classes="sectionTitle" Margin="0,8,0,0" />
+                <Border Classes="card"
+                        Grid.Row="2"
+                        VerticalAlignment="Stretch">
+                    <StackPanel Spacing="16">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Application Settings" Classes="sectionTitle" />
+                            <TextBlock Text="Global defaults and behavior for the entire application."
+                                       Classes="caption" />
+                        </StackPanel>
 
-                        <CheckBox Content="Auto-detect DAZ libraries on startup"
-                                  IsChecked="{Binding AutoDetectDazLibraries}" />
-                        <CheckBox Content="Create backup before install"
-                                  IsChecked="{Binding CreateBackupBeforeInstall}" />
+                        <StackPanel Spacing="10">
+                            <TextBlock Text="Behavior" FontWeight="SemiBold" />
 
-                        <Grid ColumnDefinitions="180,*,Auto" RowDefinitions="Auto,Auto,Auto">
-                            <TextBlock Text="Default Backup Root" VerticalAlignment="Center" />
-                            <TextBox Grid.Column="1" Text="{Binding DefaultArchiveBackupPath}" />
-                            <Button Grid.Column="2" Content="Browse"
-                                    Command="{Binding BrowseDefaultArchiveBackupPathCommand}" />
+                            <CheckBox Content="Auto-detect DAZ libraries on startup"
+                                      IsChecked="{Binding AutoDetectDazLibraries}" />
+                            <CheckBox Content="Create backup before install"
+                                      IsChecked="{Binding CreateBackupBeforeInstall}" />
 
-                            <TextBlock Grid.Row="1" Text="Default Thumbnail Root" VerticalAlignment="Center" />
-                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DefaultArchiveThumbnailPath}" />
-                            <Button Grid.Row="1" Grid.Column="2" Content="Browse"
-                                    Command="{Binding BrowseDefaultArchiveThumbnailPathCommand}" />
+                            <Grid ColumnDefinitions="180,*">
+                                <TextBlock Text="Max Concurrent Installs" VerticalAlignment="Center" />
+                                <NumericUpDown Grid.Column="1"
+                                               Minimum="1"
+                                               Maximum="16"
+                                               Width="120"
+                                               HorizontalAlignment="Left"
+                                               Value="{Binding MaxConcurrentArchiveInstalls}" />
+                            </Grid>
 
-                            <TextBlock Grid.Row="2" Text="Temp Working Path" VerticalAlignment="Center" />
-                            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding TempWorkingDirectoryPath}" />
-                            <Button Grid.Row="2" Grid.Column="2" Content="Browse"
-                                    Command="{Binding BrowseTempWorkingDirectoryPathCommand}" />
-                        </Grid>
-
-                        <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Content="Auto Detect Libraries"
                                     Command="{Binding AutoDetectLibrariesCommand}"
-                                    Classes="secondary" />
+                                    Classes="secondary"
+                                    HorizontalAlignment="Left" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Default Paths" FontWeight="SemiBold" />
+                                <TextBlock Text="Used for new libraries and when a library has no override."
+                                           Classes="caption" />
+                            </StackPanel>
+
+                            <Grid ColumnDefinitions="180,*,Auto" RowDefinitions="Auto,Auto,Auto">
+                                <TextBlock Text="Default Backup Root" VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1" Text="{Binding DefaultArchiveBackupPath}" />
+                                <Button Grid.Column="2" Content="Browse"
+                                        Command="{Binding BrowseDefaultArchiveBackupPathCommand}" />
+
+                                <TextBlock Grid.Row="1" Text="Default Thumbnail Root" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DefaultArchiveThumbnailPath}" />
+                                <Button Grid.Row="1" Grid.Column="2" Content="Browse"
+                                        Command="{Binding BrowseDefaultArchiveThumbnailPathCommand}" />
+
+                                <TextBlock Grid.Row="2" Text="Temp Working Path" VerticalAlignment="Center" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding TempWorkingDirectoryPath}" />
+                                <Button Grid.Row="2" Grid.Column="2" Content="Browse"
+                                        Command="{Binding BrowseTempWorkingDirectoryPathCommand}" />
+                            </Grid>
                         </StackPanel>
                     </StackPanel>
-                </ScrollViewer>
-            </Border>
+                </Border>
+            </Grid>
         </Grid>
-
-        <Border Grid.Row="1"
-                Background="{DynamicResource SurfaceBrush}"
-                BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1,0,0,0"
-                Padding="0,12,0,0"
-                Margin="0,16,0,0">
-            <DockPanel LastChildFill="False">
-                <TextBlock DockPanel.Dock="Left"
-                           Text="{Binding StatusText}"
-                           VerticalAlignment="Center"
-                           Classes="caption" />
-
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-                    <Button Content="Cancel" Command="{Binding CancelCommand}" Classes="secondary" />
-                    <Button Content="Save" Command="{Binding SaveCommand}" Classes="primary" />
-                </StackPanel>
-            </DockPanel>
-        </Border>
-    </Grid>
+    </DockPanel>
 </Window>

@@ -377,8 +377,8 @@ public class DazArchiveInstallerTests
             .Select(i => ($"data/author/product/file{i:D3}.txt", $"content-{i}"))
             .ToArray();
 
-        await using var fixture = await InstallerFixture.CreateAsync(config =>
-            config.MaxConcurrentArchiveInstalls = 1);
+        await using var fixture = await InstallerFixture.CreateAsync(configureSettings: settings =>
+            settings.MaxConcurrentArchiveInstalls = 1);
         var archivePath = fixture.CreateArchive("many-files.zip", entries);
         var installer = fixture.CreateInstaller();
 
@@ -866,7 +866,9 @@ public class DazArchiveInstallerTests
         public string BackupPath { get; }
         public string ThumbnailPath { get; }
 
-        public static async Task<InstallerFixture> CreateAsync(Action<InstallerConfig>? configure = null)
+        public static async Task<InstallerFixture> CreateAsync(
+            Action<InstallerConfig>? configure = null,
+            Action<AppSettings>? configureSettings = null)
         {
             var rootPath = Path.Combine(Path.GetTempPath(), $"DazContentInstallerTests-{Guid.NewGuid():N}");
             Directory.CreateDirectory(rootPath);
@@ -886,12 +888,14 @@ public class DazArchiveInstallerTests
 
             var dbContextFactory = new TestDbContextFactory(options);
             var settingsService = new SettingsService(Options.Create(config), dbContextFactory);
-            settingsService.UpdateSettings(new AppSettings
+            var appSettings = new AppSettings
             {
                 CreateBackupBeforeInstall = true,
                 DefaultArchiveBackupPath = config.ArchiveBackupPath,
                 DefaultArchiveThumbnailPath = config.ArchiveThumbnailPath
-            });
+            };
+            configureSettings?.Invoke(appSettings);
+            settingsService.UpdateSettings(appSettings);
 
             var assetLibrary = new AssetLibrary
             {

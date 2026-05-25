@@ -114,5 +114,7 @@ public class SettingsService(
     {
         CurrentSettings.DefaultArchiveBackupPath ??= _config.ArchiveBackupPath;
         CurrentSettings.DefaultArchiveThumbnailPath ??= _config.ArchiveThumbnailPath;
+        if (CurrentSettings.MaxConcurrentArchiveInstalls <= 0)
+            CurrentSettings.MaxConcurrentArchiveInstalls = _config.MaxConcurrentArchiveInstalls;
     }
 }

@@ -21,6 +21,7 @@ public class SettingsServiceTests
         File.Exists(context.Config.AppSettingsPath).ShouldBeTrue();
         service.CurrentSettings.DefaultArchiveBackupPath.ShouldBe(context.Config.ArchiveBackupPath);
         service.CurrentSettings.DefaultArchiveThumbnailPath.ShouldBe(context.Config.ArchiveThumbnailPath);
+        service.CurrentSettings.MaxConcurrentArchiveInstalls.ShouldBe(context.Config.MaxConcurrentArchiveInstalls);
     }
 
     [Fact]
@@ -75,6 +76,7 @@ public class SettingsServiceTests
 
         context.Service.CurrentSettings.DefaultArchiveBackupPath.ShouldBe(context.Config.ArchiveBackupPath);
         context.Service.CurrentSettings.DefaultArchiveThumbnailPath.ShouldBe(context.Config.ArchiveThumbnailPath);
+        context.Service.CurrentSettings.MaxConcurrentArchiveInstalls.ShouldBe(context.Config.MaxConcurrentArchiveInstalls);
     }
 
     private static async Task<TestContext> CreateContextAsync()

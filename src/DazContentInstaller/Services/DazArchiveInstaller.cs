@@ -186,7 +186,8 @@ public class DazArchiveInstaller(
     private async IAsyncEnumerable<LoadedArchive> RunInstallWorkersAsync(Guid assetLibraryId,
         IReadOnlyList<LoadedArchive> archiveList, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var maxParallelism = Math.Max(1, Math.Min(installerConfig.MaxConcurrentArchiveInstalls, archiveList.Count));
+        var maxParallelism = Math.Max(1,
+            Math.Min(settingsService.CurrentSettings.MaxConcurrentArchiveInstalls, archiveList.Count));
         var channel = Channel.CreateUnbounded<LoadedArchive>(new UnboundedChannelOptions
         {
             SingleReader = true,
@@ -517,7 +518,7 @@ public class DazArchiveInstaller(
             yield return archive;
 
         var skippedDuplicateCount = 0;
-        var persistImmediately = installerConfig.MaxConcurrentArchiveInstalls > 1;
+        var persistImmediately = settingsService.CurrentSettings.MaxConcurrentArchiveInstalls > 1;
         var previousAutoDetectChanges = dbContext.ChangeTracker.AutoDetectChangesEnabled;
         dbContext.ChangeTracker.AutoDetectChangesEnabled = false;
         try

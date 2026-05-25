@@ -31,8 +31,8 @@ public class DazArchiveInstallerConcurrencyTests
     [Fact]
     public async Task InstallArchivesAsync_InstallsMultipleArchivesConcurrentlyWithDisjointPaths()
     {
-        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync(config =>
-            config.MaxConcurrentArchiveInstalls = 2);
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync(configureSettings: settings =>
+            settings.MaxConcurrentArchiveInstalls = 2);
         var firstArchive = fixture.CreateArchive("first.zip", ("data/first/file.txt", "first"));
         var secondArchive = fixture.CreateArchive("second.zip", ("data/second/file.txt", "second"));
         var installer = fixture.CreateInstaller();
@@ -49,8 +49,8 @@ public class DazArchiveInstallerConcurrencyTests
     [Fact]
     public async Task InstallArchivesAsync_PreservesReplacementSemanticsWhenArchivesConflictConcurrently()
     {
-        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync(config =>
-            config.MaxConcurrentArchiveInstalls = 2);
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync(configureSettings: settings =>
+            settings.MaxConcurrentArchiveInstalls = 2);
         var firstArchive = fixture.CreateArchive("first.zip", ("data/shared/file.txt", "first"));
         var secondArchive = fixture.CreateArchive("second.zip", ("data/shared/file.txt", "second version"));
         var installer = fixture.CreateInstaller();
@@ -69,8 +69,8 @@ public class DazArchiveInstallerConcurrencyTests
     [Fact]
     public async Task InstallArchivesAsync_PreservesReplacementSemanticsForCaseVariantPathsConcurrently()
     {
-        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync(config =>
-            config.MaxConcurrentArchiveInstalls = 2);
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync(configureSettings: settings =>
+            settings.MaxConcurrentArchiveInstalls = 2);
         var firstArchive = fixture.CreateArchive("first.zip", ("data/shared/file.txt", "first"));
         var secondArchive = fixture.CreateArchive("second.zip", ("DATA/shared/file.txt", "second version"));
         var installer = fixture.CreateInstaller();

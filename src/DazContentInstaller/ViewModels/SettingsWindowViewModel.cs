@@ -31,6 +31,8 @@ public partial class SettingsWindowViewModel(
 
     [ObservableProperty] public partial string? TempWorkingDirectoryPath { get; set; }
 
+    [ObservableProperty] public partial int MaxConcurrentArchiveInstalls { get; set; } = 2;
+
     [ObservableProperty] public partial string StatusText { get; set; } = "Ready";
 
     public event EventHandler<bool>? CloseRequested;
@@ -44,6 +46,7 @@ public partial class SettingsWindowViewModel(
         DefaultArchiveBackupPath = settings.DefaultArchiveBackupPath;
         DefaultArchiveThumbnailPath = settings.DefaultArchiveThumbnailPath;
         TempWorkingDirectoryPath = settings.TempWorkingDirectoryPath;
+        MaxConcurrentArchiveInstalls = settings.MaxConcurrentArchiveInstalls;
 
         await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var libraries = await dbContext.AssetLibraries.OrderBy(x => x.Name).ToListAsync();
@@ -226,7 +229,8 @@ public partial class SettingsWindowViewModel(
                 : DefaultArchiveThumbnailPath.Trim(),
             TempWorkingDirectoryPath = string.IsNullOrWhiteSpace(TempWorkingDirectoryPath)
                 ? null
-                : TempWorkingDirectoryPath.Trim()
+                : TempWorkingDirectoryPath.Trim(),
+            MaxConcurrentArchiveInstalls = Math.Max(1, MaxConcurrentArchiveInstalls)
         });
 
         await dbContext.SaveChangesAsync();
