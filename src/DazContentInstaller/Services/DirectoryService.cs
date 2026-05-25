@@ -12,10 +12,10 @@ public class TempDirectory : IDisposable
     {
         DirectoryInfo = directoryInfo;
     }
-    
+
     public void Dispose()
     {
-        if(DirectoryInfo.Exists)
+        if (DirectoryInfo.Exists)
             DirectoryInfo.Delete(true);
     }
 }
@@ -52,7 +52,8 @@ public class DirectoryService : IDirectoryService
         if (!string.IsNullOrWhiteSpace(appSettings.TempWorkingDirectoryPath))
         {
             Directory.CreateDirectory(appSettings.TempWorkingDirectoryPath);
-            var directory = Path.Combine(appSettings.TempWorkingDirectoryPath, $"DazContentInstaller-{Guid.NewGuid():N}");
+            var directory = Path.Combine(appSettings.TempWorkingDirectoryPath,
+                $"DazContentInstaller-{Guid.NewGuid():N}");
             return new TempDirectory(Directory.CreateDirectory(directory));
         }
 

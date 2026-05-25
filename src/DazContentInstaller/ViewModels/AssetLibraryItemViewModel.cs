@@ -8,16 +8,16 @@ public partial class AssetLibraryItemViewModel : ViewModelBase
     public Guid Id { get; set; } = Guid.NewGuid();
 
     [ObservableProperty]
-    private string _name = string.Empty;
+    public partial string Name { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private string _path = string.Empty;
+    public partial string Path { get; set; } = string.Empty;
 
     [ObservableProperty]
-    private string? _archiveBackupPath;
+    public partial string? ArchiveBackupPath { get; set; }
 
     [ObservableProperty]
-    private bool _isDefault;
+    public partial bool IsDefault { get; set; }
 
     partial void OnPathChanged(string value) => ApplyDefaultBackupPathIfUnset();
 

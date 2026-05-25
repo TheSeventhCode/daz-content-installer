@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using DazContentInstaller.Database;
 using DazContentInstaller.Services;
 using Shouldly;

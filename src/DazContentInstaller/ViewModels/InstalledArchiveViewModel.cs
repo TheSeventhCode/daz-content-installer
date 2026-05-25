@@ -24,5 +24,5 @@ public partial class InstalledArchiveViewModel : ViewModelBase
     public ulong ArchiveSize { get; init; }
 
     [ObservableProperty]
-    private bool _isSelected;
+    public partial bool IsSelected { get; set; }
 }

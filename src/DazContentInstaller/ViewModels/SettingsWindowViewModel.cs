@@ -19,23 +19,17 @@ public partial class SettingsWindowViewModel(
 {
     public ObservableCollection<AssetLibraryItemViewModel> AssetLibraries { get; } = [];
 
-    [ObservableProperty]
-    private AssetLibraryItemViewModel? _selectedAssetLibrary;
+    [ObservableProperty] public partial AssetLibraryItemViewModel? SelectedAssetLibrary { get; set; }
 
-    [ObservableProperty]
-    private bool _autoDetectDazLibraries;
+    [ObservableProperty] public partial bool AutoDetectDazLibraries { get; set; }
 
-    [ObservableProperty]
-    private bool _createBackupBeforeInstall;
+    [ObservableProperty] public partial bool CreateBackupBeforeInstall { get; set; }
 
-    [ObservableProperty]
-    private string? _defaultArchiveBackupPath;
+    [ObservableProperty] public partial string? DefaultArchiveBackupPath { get; set; }
 
-    [ObservableProperty]
-    private string? _tempWorkingDirectoryPath;
+    [ObservableProperty] public partial string? TempWorkingDirectoryPath { get; set; }
 
-    [ObservableProperty]
-    private string _statusText = "Ready";
+    [ObservableProperty] public partial string StatusText { get; set; } = "Ready";
 
     public event EventHandler<bool>? CloseRequested;
 
@@ -51,21 +45,22 @@ public partial class SettingsWindowViewModel(
         await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var libraries = await dbContext.AssetLibraries.OrderBy(x => x.Name).ToListAsync();
         AssetLibraries.Clear();
-        foreach (var library in libraries)
+        foreach (var libraryViewModel in libraries.Select(library => new AssetLibraryItemViewModel
+                 {
+                     Id = library.Id,
+                     Name = library.Name,
+                     Path = library.Path,
+                     ArchiveBackupPath = library.ArchiveBackupPath,
+                     IsDefault = library.Id == settings.DefaultAssetLibrary
+                 }))
         {
-            var libraryViewModel = new AssetLibraryItemViewModel
-            {
-                Id = library.Id,
-                Name = library.Name,
-                Path = library.Path,
-                ArchiveBackupPath = library.ArchiveBackupPath,
-                IsDefault = library.Id == settings.DefaultAssetLibrary
-            };
             AssetLibraries.Add(libraryViewModel);
         }
 
         SortAssetLibraries(preserveSelection: false);
-        SelectedAssetLibrary = AssetLibraries.FirstOrDefault(x => x.IsDefault) ?? AssetLibraries.FirstOrDefault();
+        SelectedAssetLibrary = AssetLibraries
+                                   .FirstOrDefault(x => x.IsDefault)
+                               ?? AssetLibraries.FirstOrDefault();
     }
 
     [RelayCommand]
@@ -195,8 +190,12 @@ public partial class SettingsWindowViewModel(
             AutoDetectDazLibraries = AutoDetectDazLibraries,
             CreateBackupBeforeInstall = CreateBackupBeforeInstall,
             DefaultAssetLibrary = AssetLibraries.FirstOrDefault(x => x.IsDefault)?.Id ?? Guid.Empty,
-            DefaultArchiveBackupPath = string.IsNullOrWhiteSpace(DefaultArchiveBackupPath) ? null : DefaultArchiveBackupPath.Trim(),
-            TempWorkingDirectoryPath = string.IsNullOrWhiteSpace(TempWorkingDirectoryPath) ? null : TempWorkingDirectoryPath.Trim()
+            DefaultArchiveBackupPath = string.IsNullOrWhiteSpace(DefaultArchiveBackupPath)
+                ? null
+                : DefaultArchiveBackupPath.Trim(),
+            TempWorkingDirectoryPath = string.IsNullOrWhiteSpace(TempWorkingDirectoryPath)
+                ? null
+                : TempWorkingDirectoryPath.Trim()
         });
 
         await dbContext.SaveChangesAsync();

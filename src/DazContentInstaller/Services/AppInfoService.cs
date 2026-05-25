@@ -1,3 +1,5 @@
+namespace DazContentInstaller.Services;
+
 public interface IAppInfoService
 {
     string? GetAppVersion();

@@ -34,7 +34,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         "templates"
     };
 
-    public static readonly HashSet<string> NestedArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> NestedArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".zip",
         ".7z",
@@ -46,7 +46,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         ".xz"
     };
 
-    public static readonly HashSet<string> IgnoredFileNames = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> IgnoredFileNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "Thumbs.db"
     };
@@ -75,7 +75,8 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         ["textures"] = AssetType.Textures
     };
 
-    public async Task<DazArchiveScanResult> ScanArchiveAsync(string archivePath, CancellationToken cancellationToken = default)
+    public async Task<DazArchiveScanResult> ScanArchiveAsync(string archivePath,
+        CancellationToken cancellationToken = default)
     {
         using var workingDirectory = directoryService.GetTempDirectory();
         return await ScanArchiveFileAsync(archivePath, workingDirectory.DirectoryInfo.FullName, cancellationToken);
@@ -89,7 +90,8 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
             throw new FileNotFoundException("Archive file not found.", archivePath);
 
         using var sourceArchive = ArchiveFactory.OpenArchive(archiveInfo.FullName);
-        return await ScanOpenedArchiveAsync(sourceArchive, archiveInfo.Name, archiveInfo.FullName, (ulong)archiveInfo.Length,
+        return await ScanOpenedArchiveAsync(sourceArchive, archiveInfo.Name, archiveInfo.FullName,
+            (ulong)archiveInfo.Length,
             workingDirectory, cancellationToken);
     }
 
@@ -132,7 +134,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
 
             var nestedArchivePath = Path.Combine(workingDirectory,
                 $"{Guid.NewGuid():N}{Path.GetExtension(normalizedEntryPath)}");
-            await using (var sourceStream = entry.OpenEntryStream())
+            await using (var sourceStream = await entry.OpenEntryStreamAsync(cancellationToken))
             await using (var outputStream = File.Create(nestedArchivePath))
             {
                 await sourceStream.CopyToAsync(outputStream, cancellationToken);
@@ -214,5 +216,4 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
             }
         }
     }
-
 }

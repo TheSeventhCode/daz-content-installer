@@ -37,7 +37,8 @@ public class DazArchiveInstaller(
     DestinationPathLockRegistry destinationPathLockRegistry)
     : IDazArchiveInstaller
 {
-    public async IAsyncEnumerable<LoadedArchive> InstallArchivesAsync(Guid assetLibraryId, IEnumerable<LoadedArchive> archives,
+    public async IAsyncEnumerable<LoadedArchive> InstallArchivesAsync(Guid assetLibraryId,
+        IEnumerable<LoadedArchive> archives,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var archiveList = archives.ToList();
@@ -48,11 +49,13 @@ public class DazArchiveInstaller(
         if (maxParallelism == 1 || archiveList.Count == 1)
         {
             await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            var assetLibrary = await dbContext.AssetLibraries.FirstAsync(x => x.Id == assetLibraryId, cancellationToken);
+            var assetLibrary =
+                await dbContext.AssetLibraries.FirstAsync(x => x.Id == assetLibraryId, cancellationToken);
 
             foreach (var archive in archiveList)
             {
-                await foreach (var progress in InstallArchiveAsync(dbContext, assetLibrary, archive, cancellationToken: cancellationToken))
+                await foreach (var progress in InstallArchiveAsync(dbContext, assetLibrary, archive,
+                                   cancellationToken: cancellationToken))
                     yield return progress;
             }
 
@@ -67,7 +70,8 @@ public class DazArchiveInstaller(
         using var semaphore = new SemaphoreSlim(maxParallelism, maxParallelism);
 
         var workerTasks = archiveList
-            .Select(archive => RunArchiveInstallWorkerAsync(assetLibraryId, archive, semaphore, channel.Writer, cancellationToken))
+            .Select(archive =>
+                RunArchiveInstallWorkerAsync(assetLibraryId, archive, semaphore, channel.Writer, cancellationToken))
             .ToArray();
 
         var completionTask = Task.Run(async () =>
@@ -198,9 +202,11 @@ public class DazArchiveInstaller(
         try
         {
             await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
-            var assetLibrary = await dbContext.AssetLibraries.FirstAsync(x => x.Id == assetLibraryId, cancellationToken);
+            var assetLibrary =
+                await dbContext.AssetLibraries.FirstAsync(x => x.Id == assetLibraryId, cancellationToken);
 
-            await foreach (var progress in InstallArchiveAsync(dbContext, assetLibrary, archive, cancellationToken: cancellationToken))
+            await foreach (var progress in InstallArchiveAsync(dbContext, assetLibrary, archive,
+                               cancellationToken: cancellationToken))
                 await writer.WriteAsync(progress, cancellationToken);
         }
         finally
@@ -209,7 +215,8 @@ public class DazArchiveInstaller(
         }
     }
 
-    private async IAsyncEnumerable<LoadedArchive> InstallArchiveAsync(ApplicationDbContext dbContext, AssetLibrary assetLibrary,
+    private async IAsyncEnumerable<LoadedArchive> InstallArchiveAsync(ApplicationDbContext dbContext,
+        AssetLibrary assetLibrary,
         LoadedArchive archive, Archive? existingArchiveEntity = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -237,8 +244,6 @@ public class DazArchiveInstaller(
             archiveEntity.ErrorMessage = null;
             archiveEntity.InstallStartedAt = DateTime.Now;
             archiveEntity.InstallCompletedAt = null;
-            await dbContext.SaveChangesAsync(cancellationToken);
-            archive.ArchiveId = archiveEntity.Id;
         }
         else
         {
@@ -269,12 +274,12 @@ public class DazArchiveInstaller(
             };
 
             dbContext.Archives.Add(archiveEntity);
-            await dbContext.SaveChangesAsync(cancellationToken);
-
-            archive.ArchiveId = archiveEntity.Id;
         }
 
-        DazArchiveScanResult? scanResult = archive.CachedScanResult;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        archive.ArchiveId = archiveEntity.Id;
+
+        var scanResult = archive.CachedScanResult;
         Exception? scanFailure = null;
         if (scanResult is null)
         {
@@ -307,8 +312,6 @@ public class DazArchiveInstaller(
         archive.TotalFiles = scanResult.InstallableFileCount;
         archive.InstallableSizeBytes = scanResult.InstallableSize;
         archive.ContentRoot = scanResult.ContentRoot;
-        foreach (var category in scanResult.Categories)
-            archive.Categories.Add(category);
         archive.AssetTypes.Clear();
         foreach (var assetType in scanResult.AssetTypes)
             archive.AssetTypes.Add(assetType);
@@ -337,7 +340,7 @@ public class DazArchiveInstaller(
             Exception? backupError = null;
             try
             {
-                await BackupArchiveAsync(assetLibrary, archiveEntity, sourceInfo.FullName, cancellationToken);
+                await BackupArchiveAsync(assetLibrary, sourceInfo.FullName, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -359,7 +362,8 @@ public class DazArchiveInstaller(
         try
         {
             using var sourceArchive = ArchiveFactory.OpenArchive(sourceInfo.FullName);
-            await CollectInstallableEntriesAsync(dbContext, sourceArchive, archiveEntity, workingDirectory.DirectoryInfo.FullName,
+            await CollectInstallableEntriesAsync(dbContext, sourceArchive, archiveEntity,
+                workingDirectory.DirectoryInfo.FullName,
                 installableEntries, cancellationToken);
         }
         catch (Exception ex)
@@ -443,7 +447,8 @@ public class DazArchiveInstaller(
         yield return archive;
     }
 
-    private async Task CollectInstallableEntriesAsync(ApplicationDbContext dbContext, IArchive sourceArchive, Archive archiveEntity,
+    private static async Task CollectInstallableEntriesAsync(ApplicationDbContext dbContext, IArchive sourceArchive,
+        Archive archiveEntity,
         string workingDirectory, List<InstallableArchiveEntry> installableEntries, CancellationToken cancellationToken)
     {
         foreach (var entry in sourceArchive.Entries.Where(x => !x.IsDirectory))
@@ -461,8 +466,9 @@ public class DazArchiveInstaller(
             {
                 archiveEntity.ContentRoot ??= contentRoot;
 
-                var extractedPath = Path.Combine(workingDirectory, $"{Guid.NewGuid():N}{Path.GetExtension(normalizedEntryPath)}");
-                await using (var sourceStream = entry.OpenEntryStream())
+                var extractedPath = Path.Combine(workingDirectory,
+                    $"{Guid.NewGuid():N}{Path.GetExtension(normalizedEntryPath)}");
+                await using (var sourceStream = await entry.OpenEntryStreamAsync(cancellationToken))
                 await using (var outputStream = File.Create(extractedPath))
                 {
                     await sourceStream.CopyToAsync(outputStream, cancellationToken);
@@ -482,8 +488,9 @@ public class DazArchiveInstaller(
             if (!DazArchiveScanner.IsNestedArchive(normalizedEntryPath))
                 continue;
 
-            var nestedArchivePath = Path.Combine(workingDirectory, $"{Guid.NewGuid():N}{Path.GetExtension(normalizedEntryPath)}");
-            await using (var sourceStream = entry.OpenEntryStream())
+            var nestedArchivePath = Path.Combine(workingDirectory,
+                $"{Guid.NewGuid():N}{Path.GetExtension(normalizedEntryPath)}");
+            await using (var sourceStream = await entry.OpenEntryStreamAsync(cancellationToken))
             await using (var outputStream = File.Create(nestedArchivePath))
             {
                 await sourceStream.CopyToAsync(outputStream, cancellationToken);
@@ -504,12 +511,14 @@ public class DazArchiveInstaller(
             await dbContext.SaveChangesAsync(cancellationToken);
 
             using var nestedSourceArchive = ArchiveFactory.OpenArchive(nestedArchivePath);
-            await CollectInstallableEntriesAsync(dbContext, nestedSourceArchive, nestedArchive, workingDirectory, installableEntries,
+            await CollectInstallableEntriesAsync(dbContext, nestedSourceArchive, nestedArchive, workingDirectory,
+                installableEntries,
                 cancellationToken);
         }
     }
 
-    private async Task InstallEntryAsync(ApplicationDbContext dbContext, AssetLibrary assetLibrary, InstallableArchiveEntry entry,
+    private async Task InstallEntryAsync(ApplicationDbContext dbContext, AssetLibrary assetLibrary,
+        InstallableArchiveEntry entry,
         CancellationToken cancellationToken)
     {
         var lockKey = DestinationPathLockRegistry.CreateLockKey(assetLibrary.Id, entry.InstalledRelativePath);
@@ -566,7 +575,9 @@ public class DazArchiveInstaller(
                 Archive = entry.Archive,
                 InstalledFile = installedFile,
                 AssetFile = assetFile,
-                InstallRecordStatus = existingActiveRecord is null ? InstallRecordStatus.Installed : InstallRecordStatus.Replaced,
+                InstallRecordStatus = existingActiveRecord is null
+                    ? InstallRecordStatus.Installed
+                    : InstallRecordStatus.Replaced,
                 InstalledAt = DateTime.Now
             };
 
@@ -578,7 +589,7 @@ public class DazArchiveInstaller(
         }, cancellationToken);
     }
 
-    private async Task PrepareExistingArchiveForReinstallAsync(ApplicationDbContext dbContext, Archive rootArchive,
+    private static async Task PrepareExistingArchiveForReinstallAsync(ApplicationDbContext dbContext, Archive rootArchive,
         CancellationToken cancellationToken)
     {
         var archiveIds = await GetArchiveTreeIdsAsync(dbContext, rootArchive.Id, cancellationToken);
@@ -608,7 +619,7 @@ public class DazArchiveInstaller(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task BackupArchiveAsync(AssetLibrary assetLibrary, Archive archiveEntity, string sourcePath,
+    private async Task BackupArchiveAsync(AssetLibrary assetLibrary, string sourcePath,
         CancellationToken cancellationToken)
     {
         var backupRoot = GetBackupRoot(assetLibrary);
@@ -621,7 +632,8 @@ public class DazArchiveInstaller(
         await sourceStream.CopyToAsync(destinationStream, cancellationToken);
     }
 
-    private static async Task MarkArchiveAsFailedAsync(ApplicationDbContext dbContext, Archive archiveEntity, LoadedArchive archive,
+    private static async Task MarkArchiveAsFailedAsync(ApplicationDbContext dbContext, Archive archiveEntity,
+        LoadedArchive archive,
         Exception ex, CancellationToken cancellationToken)
     {
         archiveEntity.Status = ArchiveStatus.Error;
@@ -668,7 +680,8 @@ public class DazArchiveInstaller(
         return visited;
     }
 
-    private static async Task<string> CopyWithHashAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken)
+    private static async Task<string> CopyWithHashAsync(string sourcePath, string destinationPath,
+        CancellationToken cancellationToken)
     {
         using var sha256 = SHA256.Create();
         await using var sourceStream = File.OpenRead(sourcePath);

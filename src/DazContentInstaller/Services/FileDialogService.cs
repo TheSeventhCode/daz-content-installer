@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 
@@ -60,11 +59,12 @@ public class FileDialogService : IFileDialogService
             SuggestedStartLocation = startLocation
         });
 
-        return folders.FirstOrDefault()?.Path.LocalPath;
+        return folders.ElementAtOrDefault(0)?.Path.LocalPath;
     }
 
     private static IStorageProvider? GetStorageProvider()
     {
-        return (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow?.StorageProvider;
+        return (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow
+            ?.StorageProvider;
     }
 }

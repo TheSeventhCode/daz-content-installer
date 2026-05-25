@@ -16,8 +16,9 @@ public sealed class DazArchiveScanResult
     public IReadOnlyList<DazArchiveScanResult> NestedArchives { get; init; } = [];
 
     public int InstallableFileCount => InstallableFiles.Count + NestedArchives.Sum(x => x.InstallableFileCount);
+
     public ulong InstallableSize => InstallableFiles.Aggregate(0UL, (sum, file) => sum + file.FileSize)
-        + NestedArchives.Aggregate(0UL, (sum, archive) => sum + archive.InstallableSize);
+                                    + NestedArchives.Aggregate(0UL, (sum, archive) => sum + archive.InstallableSize);
 }
 
 public sealed class DazArchiveScanEntry

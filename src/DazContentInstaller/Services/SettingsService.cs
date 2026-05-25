@@ -11,7 +11,9 @@ using Microsoft.Extensions.Options;
 
 namespace DazContentInstaller.Services;
 
-public class SettingsService(IOptions<InstallerConfig> options, IDbContextFactory<ApplicationDbContext> dbContextFactory)
+public class SettingsService(
+    IOptions<InstallerConfig> options,
+    IDbContextFactory<ApplicationDbContext> dbContextFactory)
 {
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() { WriteIndented = true };
     private readonly string _settingsPath = options.Value.AppSettingsPath;
@@ -28,7 +30,7 @@ public class SettingsService(IOptions<InstallerConfig> options, IDbContextFactor
         await LoadSettingsAsync();
     }
 
-    public async Task LoadSettingsAsync()
+    private async Task LoadSettingsAsync()
     {
         try
         {
@@ -43,7 +45,7 @@ public class SettingsService(IOptions<InstallerConfig> options, IDbContextFactor
 
             var json = await File.ReadAllTextAsync(_settingsPath);
             var settings = JsonSerializer.Deserialize<AppSettings>(json);
-            if(settings is not null)
+            if (settings is not null)
                 CurrentSettings = settings;
 
             ApplyDefaults();
@@ -81,7 +83,7 @@ public class SettingsService(IOptions<InstallerConfig> options, IDbContextFactor
         ApplyDefaults();
         _settingsLoaded = true;
     }
-    
+
     public async Task AutoDetectDazLibrariesAsync()
     {
         var potentialPaths = new List<string>

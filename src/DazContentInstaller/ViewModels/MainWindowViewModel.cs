@@ -26,12 +26,12 @@ public partial class MainWindowViewModel(
     : ViewModelBase
 {
     public ObservableCollection<LoadedArchive> QueueArchives { get; } = [];
-    public ObservableCollection<InstalledArchiveViewModel> InstalledArchives { get; } = [];
+    private ObservableCollection<InstalledArchiveViewModel> InstalledArchives { get; } = [];
     public ObservableCollection<InstalledArchiveViewModel> FilteredInstalledArchives { get; } = [];
     public ObservableCollection<InstalledArchiveViewModel> SelectedInstalledArchives { get; } = [];
     public ObservableCollection<LoadedArchive> SelectedQueueArchives { get; } = [];
     public ObservableCollection<AssetLibraryItemViewModel> AssetLibraries { get; } = [];
-    public ObservableCollection<ArchiveFileRecordViewModel> SelectedArchiveFiles { get; } = [];
+    private ObservableCollection<ArchiveFileRecordViewModel> SelectedArchiveFiles { get; } = [];
     public ObservableCollection<ArchiveFileRecordViewModel> FilteredSelectedArchiveFiles { get; } = [];
 
     private bool _selectionHandlersRegistered;
@@ -42,50 +42,39 @@ public partial class MainWindowViewModel(
     [NotifyCanExecuteChangedFor(nameof(ReinstallSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ForgetSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveQueuedArchivesCommand))]
-    private bool _isBusy;
+    private partial bool IsBusy { get; set; }
 
-    [ObservableProperty]
-    private string _statusText = "Ready";
+    [ObservableProperty] public partial string StatusText { get; set; } = "Ready";
 
-    [ObservableProperty]
-    private double _progressPercent;
+    [ObservableProperty] public partial double ProgressPercent { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallQueueCommand))]
-    private AssetLibraryItemViewModel? _selectedAssetLibrary;
+    public partial AssetLibraryItemViewModel? SelectedAssetLibrary { get; set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(UninstallSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReinstallSelectedArchiveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ForgetSelectedArchiveCommand))]
-    private InstalledArchiveViewModel? _selectedInstalledArchive;
+    public partial InstalledArchiveViewModel? SelectedInstalledArchive { get; set; }
 
-    [ObservableProperty]
-    private LoadedArchive? _selectedQueueArchive;
+    [ObservableProperty] public partial LoadedArchive? SelectedQueueArchive { get; set; }
 
-    [ObservableProperty]
-    private string _installedArchiveSearchText = string.Empty;
+    [ObservableProperty] public partial string InstalledArchiveSearchText { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    private string _archiveFileSearchText = string.Empty;
+    [ObservableProperty] public partial string ArchiveFileSearchText { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    private int _selectedAssetLibraryArchiveCount;
+    [ObservableProperty] private partial int SelectedAssetLibraryArchiveCount { get; set; }
 
-    [ObservableProperty]
-    private int _selectedAssetLibraryInstalledArchiveCount;
+    [ObservableProperty] private partial int SelectedAssetLibraryInstalledArchiveCount { get; set; }
 
-    [ObservableProperty]
-    private int _selectedAssetLibraryFileCount;
+    [ObservableProperty] private partial int SelectedAssetLibraryFileCount { get; set; }
 
-    [ObservableProperty]
-    private int _selectedAssetLibraryActiveFileCount;
+    [ObservableProperty] private partial int SelectedAssetLibraryActiveFileCount { get; set; }
 
-    [ObservableProperty]
-    private ulong _selectedAssetLibraryTotalArchiveSize;
+    [ObservableProperty] private partial ulong SelectedAssetLibraryTotalArchiveSize { get; set; }
 
-    [ObservableProperty]
-    private ulong _selectedAssetLibraryTotalContentSize;
+    [ObservableProperty] private partial ulong SelectedAssetLibraryTotalContentSize { get; set; }
 
     public string ArchiveFileListSummary =>
         string.IsNullOrWhiteSpace(ArchiveFileSearchText)
@@ -490,7 +479,8 @@ public partial class MainWindowViewModel(
 
     private bool CanInstallQueue()
     {
-        return !IsBusy && SelectedAssetLibrary is not null && QueueArchives.Any(x => x.ArchiveStatus == ArchiveStatus.Ready);
+        return !IsBusy && SelectedAssetLibrary is not null &&
+               QueueArchives.Any(x => x.ArchiveStatus == ArchiveStatus.Ready);
     }
 
     private bool CanRemoveQueuedArchives()
@@ -511,7 +501,8 @@ public partial class MainWindowViewModel(
 
     private bool CanForgetSelectedArchive()
     {
-        return !IsBusy && SelectedInstalledArchives.Any(x => x.Status is ArchiveStatus.Uninstalled or ArchiveStatus.Error);
+        return !IsBusy &&
+               SelectedInstalledArchives.Any(x => x.Status is ArchiveStatus.Uninstalled or ArchiveStatus.Error);
     }
 
     private async Task LoadLibrariesAsync()
@@ -561,7 +552,7 @@ public partial class MainWindowViewModel(
             SelectedInstalledArchives.Add(archive);
 
         SelectedInstalledArchive = SelectedInstalledArchives.FirstOrDefault()
-            ?? InstalledArchives.FirstOrDefault();
+                                   ?? InstalledArchives.FirstOrDefault();
 
         ApplyInstalledArchiveFilter();
         await RefreshSelectedAssetLibrarySummaryAsync();
@@ -635,7 +626,8 @@ public partial class MainWindowViewModel(
             InstalledAt = archive.InstallCompletedAt ?? archive.InstallStartedAt,
             ArchiveSize = archive.ArchiveSize,
             FileCount = records.Count,
-            ActiveFileCount = records.Count(x => !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled),
+            ActiveFileCount = records.Count(x =>
+                !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled),
             ReplacedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Replaced),
             SkippedFileCount = records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Skipped),
             ErrorMessage = archive.ErrorMessage
@@ -751,7 +743,7 @@ public partial class MainWindowViewModel(
                && value.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(ApplicationDbContext dbContext, Guid rootId)
+    private static async Task<HashSet<Guid>> GetArchiveTreeIdsAsync(ApplicationDbContext dbContext, Guid rootId)
     {
         var queue = new Queue<Guid>();
         var visited = new HashSet<Guid>();
@@ -763,7 +755,8 @@ public partial class MainWindowViewModel(
             if (!visited.Add(current))
                 continue;
 
-            var children = await dbContext.Archives.Where(x => x.ParentArchiveId == current).Select(x => x.Id).ToListAsync();
+            var children = await dbContext.Archives.Where(x => x.ParentArchiveId == current).Select(x => x.Id)
+                .ToListAsync();
             foreach (var child in children)
                 queue.Enqueue(child);
         }
@@ -789,12 +782,9 @@ public partial class MainWindowViewModel(
             ArchiveId = archive.Id,
             ArchiveStatus = ArchiveStatus.Ready,
             StatusText = "Ready to reinstall",
-            ContentRoot = archive.ContentRoot
+            ContentRoot = archive.ContentRoot,
+            FileSizeBytes = archive.ArchiveSize
         };
-        loaded.FileSizeBytes = archive.ArchiveSize;
-
-        foreach (var category in archive.Categories)
-            loaded.Categories.Add(category);
 
         foreach (var assetType in archive.AssetTypes)
             loaded.AssetTypes.Add(assetType);
@@ -802,7 +792,7 @@ public partial class MainWindowViewModel(
         return loaded;
     }
 
-    private static IReadOnlyList<string> ParseCategories(string categories)
+    private static List<string> ParseCategories(string categories)
     {
         return categories.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)

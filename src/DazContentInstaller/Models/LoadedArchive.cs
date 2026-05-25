@@ -5,23 +5,19 @@ using DazContentInstaller.Extensions;
 using DazContentInstaller.Database;
 using DazContentInstaller.Services;
 using DazContentInstaller.ViewModels;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace DazContentInstaller.Models;
 
-public class LoadedArchive : ViewModelBase
+public partial class LoadedArchive : ViewModelBase
 {
     public string ArchivePath { get; }
     public string DisplayName { get; }
     public Guid? ArchiveId { get; set; }
-    public ObservableCollection<string> Categories { get; } = [];
     public ObservableCollection<AssetType> AssetTypes { get; } = [];
 
-    private ArchiveStatus _archiveStatus = ArchiveStatus.Ready;
-    public ArchiveStatus ArchiveStatus
-    {
-        get => _archiveStatus;
-        set => SetProperty(ref _archiveStatus, value);
-    }
+    [ObservableProperty]
+    public partial ArchiveStatus ArchiveStatus { get; set; } = ArchiveStatus.Ready;
 
     private string? _currentFile;
     public string? CurrentFile
@@ -120,9 +116,6 @@ public class LoadedArchive : ViewModelBase
         TotalFiles = scan.InstallableFileCount;
         InstallableSizeBytes = scan.InstallableSize;
         ContentRoot = scan.ContentRoot;
-        Categories.Clear();
-        foreach (var category in scan.Categories)
-            Categories.Add(category);
         AssetTypes.Clear();
         foreach (var assetType in scan.AssetTypes)
             AssetTypes.Add(assetType);
