@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -48,6 +49,15 @@ public partial class MainWindowViewModel(
     private bool _selectionHandlersRegistered;
     private readonly ProgressUpdateThrottler _uiProgressThrottler = new(UiProgressUpdateInterval);
     private CancellationTokenSource? _archiveDetailsLoadCts;
+    private int _activeScanOperations;
+    private int _activeInstallOperations;
+    private int _activeMaintenanceOperations;
+    private int _scanProgressCompleted;
+    private int _scanProgressTotal;
+
+    public bool IsScanningArchives => _activeScanOperations > 0;
+
+    public bool IsInstallingArchives => _activeInstallOperations > 0;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(InstallQueueCommand))]
@@ -69,13 +79,104 @@ public partial class MainWindowViewModel(
     public bool ShowIndeterminateProgress => IsBusy && ProgressPercent <= 0;
 
     public bool CanOpenOverrides =>
-        SelectedInstalledArchive?.Status == ArchiveStatus.Installed && !IsBusy;
+        SelectedInstalledArchive?.Status == ArchiveStatus.Installed && !IsInstallingArchives;
 
     partial void OnIsBusyChanged(bool value)
     {
         OnPropertyChanged(nameof(WindowTitle));
         OnPropertyChanged(nameof(ShowIndeterminateProgress));
         OnPropertyChanged(nameof(CanOpenOverrides));
+    }
+
+    private void BeginScanOperation(int total)
+    {
+        if (Interlocked.Increment(ref _activeScanOperations) == 1)
+        {
+            _scanProgressCompleted = 0;
+            _scanProgressTotal = total;
+        }
+
+        UpdateBusyState();
+        OnPropertyChanged(nameof(IsScanningArchives));
+        InstallQueueCommand.NotifyCanExecuteChanged();
+        RemoveQueuedArchivesCommand.NotifyCanExecuteChanged();
+    }
+
+    private void EndScanOperation()
+    {
+        Interlocked.Decrement(ref _activeScanOperations);
+        UpdateBusyState();
+        OnPropertyChanged(nameof(IsScanningArchives));
+        InstallQueueCommand.NotifyCanExecuteChanged();
+        RemoveQueuedArchivesCommand.NotifyCanExecuteChanged();
+    }
+
+    private void BeginInstallOperation()
+    {
+        Interlocked.Increment(ref _activeInstallOperations);
+        UpdateBusyState();
+        OnPropertyChanged(nameof(IsInstallingArchives));
+        InstallQueueCommand.NotifyCanExecuteChanged();
+        UninstallSelectedArchiveCommand.NotifyCanExecuteChanged();
+        ReinstallSelectedArchiveCommand.NotifyCanExecuteChanged();
+        ForgetSelectedArchiveCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanOpenOverrides));
+    }
+
+    private void EndInstallOperation()
+    {
+        Interlocked.Decrement(ref _activeInstallOperations);
+        UpdateBusyState();
+        OnPropertyChanged(nameof(IsInstallingArchives));
+        InstallQueueCommand.NotifyCanExecuteChanged();
+        UninstallSelectedArchiveCommand.NotifyCanExecuteChanged();
+        ReinstallSelectedArchiveCommand.NotifyCanExecuteChanged();
+        ForgetSelectedArchiveCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanOpenOverrides));
+    }
+
+    private void BeginMaintenanceOperation()
+    {
+        Interlocked.Increment(ref _activeMaintenanceOperations);
+        UpdateBusyState();
+    }
+
+    private void EndMaintenanceOperation()
+    {
+        Interlocked.Decrement(ref _activeMaintenanceOperations);
+        UpdateBusyState();
+    }
+
+    private void UpdateBusyState()
+    {
+        IsBusy = _activeScanOperations > 0 || _activeInstallOperations > 0 || _activeMaintenanceOperations > 0;
+    }
+
+    private void UpdateScanProgressUi(int completed, int total, bool force = false)
+    {
+        if (IsInstallingArchives)
+            return;
+
+        var (percent, status) = QueueProgressAggregator.ComputeScanProgress(completed, total);
+        if (_uiProgressThrottler.ShouldUpdate(force || completed == total))
+        {
+            ProgressPercent = percent;
+            StatusText = status;
+        }
+    }
+
+    private void UpdateCombinedOperationStatus()
+    {
+        if (IsInstallingArchives)
+            return;
+
+        if (IsScanningArchives)
+            UpdateScanProgressUi(_scanProgressCompleted, _scanProgressTotal, force: true);
+        else if (!IsBusy)
+        {
+            ProgressPercent = 0;
+            StatusText = QueueArchives.Count == 0 ? "Ready" : $"{QueueArchives.Count} archive(s) queued";
+        }
     }
 
     partial void OnProgressPercentChanged(double value) => OnPropertyChanged(nameof(ShowIndeterminateProgress));
@@ -257,75 +358,46 @@ public partial class MainWindowViewModel(
         if (addedArchives.Count == 0)
             return;
 
-        IsBusy = true;
+        BeginScanOperation(addedArchives.Count);
         ProgressPercent = 0;
         _uiProgressThrottler.ShouldUpdate(force: true);
-        var total = addedArchives.Count;
+        var archivesToScan = LoadedArchive.OrderByDisplayName(addedArchives);
+        var total = archivesToScan.Count;
         var completedScans = 0;
         var scanLock = new object();
         var maxScanParallelism = Math.Max(1, installerConfig.MaxConcurrentScans);
-        using var scanSemaphore = new SemaphoreSlim(maxScanParallelism, maxScanParallelism);
+        var workChannel = Channel.CreateUnbounded<LoadedArchive>(new UnboundedChannelOptions
+        {
+            SingleReader = false,
+            SingleWriter = true
+        });
+
+        foreach (var archive in archivesToScan)
+            await workChannel.Writer.WriteAsync(archive);
+
+        workChannel.Writer.Complete();
 
         try
         {
-            var scanTasks = addedArchives.Select(async archive =>
-            {
-                await scanSemaphore.WaitAsync();
-                try
+            var workerCount = Math.Min(maxScanParallelism, archivesToScan.Count);
+            var scanWorkers = Enumerable.Range(0, workerCount)
+                .Select(_ => RunScanArchiveWorkerAsync(workChannel.Reader, total, () =>
                 {
-                    await UiThread.RunAsync(() =>
-                    {
-                        archive.ArchiveStatus = ArchiveStatus.Loading;
-                        archive.StatusText = "Scanning archive";
-                        archive.ProgressPercent = 0;
-                    });
-
-                    try
-                    {
-                        var scan = await archiveScanner.ScanArchiveAsync(archive.ArchivePath);
-                        await UiThread.RunAsync(() => archive.ApplyScan(scan));
-                    }
-                    catch (Exception ex)
-                    {
-                        await UiThread.RunAsync(() =>
-                        {
-                            archive.ArchiveStatus = ArchiveStatus.Error;
-                            archive.ErrorMessage = ex.Message;
-                            archive.StatusText = ex.Message;
-                        });
-                    }
-                }
-                finally
-                {
-                    int done;
                     lock (scanLock)
                     {
                         completedScans++;
-                        done = completedScans;
+                        return completedScans;
                     }
+                }))
+                .ToArray();
 
-                    var (percent, status) = QueueProgressAggregator.ComputeScanProgress(done, total);
-                    if (_uiProgressThrottler.ShouldUpdate(force: done == total))
-                    {
-                        await UiThread.RunAsync(() =>
-                        {
-                            ProgressPercent = percent;
-                            StatusText = status;
-                        });
-                    }
-
-                    scanSemaphore.Release();
-                }
-            });
-
-            await Task.WhenAll(scanTasks);
+            await Task.WhenAll(scanWorkers);
         }
         finally
         {
-            IsBusy = false;
+            EndScanOperation();
             InstallQueueCommand.NotifyCanExecuteChanged();
-            StatusText = $"{QueueArchives.Count} archive(s) queued";
-            ProgressPercent = 0;
+            UpdateCombinedOperationStatus();
             SortQueueArchives();
         }
     }
@@ -343,14 +415,13 @@ public partial class MainWindowViewModel(
         if (SelectedAssetLibrary is null)
             return;
 
-        IsBusy = true;
+        BeginInstallOperation();
         ProgressPercent = 0;
         _uiProgressThrottler.ShouldUpdate(force: true);
         try
         {
-            var installQueue = QueueArchives
-                .Where(x => x.ArchiveStatus is ArchiveStatus.Ready)
-                .ToList();
+            var installQueue = LoadedArchive.OrderByDisplayName(
+                QueueArchives.Where(x => x.ArchiveStatus is ArchiveStatus.Ready));
 
             if (installQueue.Count == 0)
             {
@@ -373,7 +444,8 @@ public partial class MainWindowViewModel(
         }
         finally
         {
-            IsBusy = false;
+            EndInstallOperation();
+            UpdateCombinedOperationStatus();
         }
     }
 
@@ -420,7 +492,7 @@ public partial class MainWindowViewModel(
         if (toUninstall.Count == 0)
             return;
 
-        IsBusy = true;
+        BeginMaintenanceOperation();
         ProgressPercent = 0;
         _uiProgressThrottler.ShouldUpdate(force: true);
         try
@@ -467,7 +539,7 @@ public partial class MainWindowViewModel(
         }
         finally
         {
-            IsBusy = false;
+            EndMaintenanceOperation();
         }
     }
 
@@ -481,7 +553,7 @@ public partial class MainWindowViewModel(
         if (toReinstall.Count == 0)
             return;
 
-        IsBusy = true;
+        BeginMaintenanceOperation();
         ProgressPercent = 0;
         _uiProgressThrottler.ShouldUpdate(force: true);
         SelectedInstalledArchives.Clear();
@@ -506,11 +578,9 @@ public partial class MainWindowViewModel(
 
         try
         {
-            foreach (var archive in toReinstall)
+            foreach (var queueItem in LoadedArchive.OrderByDisplayName(queueItems))
             {
-                var queueItem = queueItems.First(x => x.ArchiveId == archive.Id);
-
-                await foreach (var progress in archiveInstaller.ReinstallArchiveAsync(archive.Id, queueItem))
+                await foreach (var progress in archiveInstaller.ReinstallArchiveAsync(queueItem.ArchiveId!.Value, queueItem))
                 {
                     UpdateInstallProgressUi(queueItems, progress);
 
@@ -531,7 +601,7 @@ public partial class MainWindowViewModel(
         }
         finally
         {
-            IsBusy = false;
+            EndMaintenanceOperation();
             ReinstallSelectedArchiveCommand.NotifyCanExecuteChanged();
         }
     }
@@ -546,7 +616,7 @@ public partial class MainWindowViewModel(
         if (toForget.Count == 0)
             return;
 
-        IsBusy = true;
+        BeginMaintenanceOperation();
         ProgressPercent = 0;
         try
         {
@@ -566,7 +636,7 @@ public partial class MainWindowViewModel(
         }
         finally
         {
-            IsBusy = false;
+            EndMaintenanceOperation();
         }
     }
 
@@ -587,18 +657,18 @@ public partial class MainWindowViewModel(
 
     private bool CanInstallQueue()
     {
-        return !IsBusy && SelectedAssetLibrary is not null &&
+        return !IsInstallingArchives && SelectedAssetLibrary is not null &&
                QueueArchives.Any(x => x.ArchiveStatus == ArchiveStatus.Ready);
     }
 
     private bool CanRemoveQueuedArchives()
     {
-        return !IsBusy && SelectedQueueArchives.Count > 0;
+        return !IsInstallingArchives && SelectedQueueArchives.Count > 0;
     }
 
     private bool CanUninstallSelectedArchive()
     {
-        return !IsBusy && SelectedInstalledArchives.Any(IsUninstallEligible);
+        return !IsInstallingArchives && SelectedInstalledArchives.Any(IsUninstallEligible);
     }
 
     private static bool IsUninstallEligible(InstalledArchiveViewModel archive)
@@ -611,13 +681,13 @@ public partial class MainWindowViewModel(
 
     private bool CanReinstallSelectedArchive()
     {
-        return !IsBusy && SelectedInstalledArchives.Any(x =>
+        return !IsInstallingArchives && SelectedInstalledArchives.Any(x =>
             x.Status == ArchiveStatus.Uninstalled && File.Exists(x.BackupPath));
     }
 
     private bool CanForgetSelectedArchive()
     {
-        return !IsBusy &&
+        return !IsInstallingArchives &&
                SelectedInstalledArchives.Any(x => x.Status is ArchiveStatus.Uninstalled or ArchiveStatus.Error);
     }
 
@@ -1209,6 +1279,40 @@ public partial class MainWindowViewModel(
     private static void SortQueueArchives(ObservableCollection<LoadedArchive> queueArchives)
     {
         queueArchives.SortBy(x => x.DisplayName);
+    }
+
+    private async Task RunScanArchiveWorkerAsync(ChannelReader<LoadedArchive> workReader, int total,
+        Func<int> incrementCompletedScans)
+    {
+        await foreach (var archive in workReader.ReadAllAsync())
+        {
+            await UiThread.RunAsync(() =>
+            {
+                archive.ArchiveStatus = ArchiveStatus.Loading;
+                archive.StatusText = "Scanning archive";
+                archive.ProgressPercent = 0;
+            });
+
+            try
+            {
+                var scan = await archiveScanner.ScanArchiveAsync(archive.ArchivePath);
+                await UiThread.RunAsync(() => archive.ApplyScan(scan));
+            }
+            catch (Exception ex)
+            {
+                await UiThread.RunAsync(() =>
+                {
+                    archive.ArchiveStatus = ArchiveStatus.Error;
+                    archive.ErrorMessage = ex.Message;
+                    archive.StatusText = ex.Message;
+                });
+            }
+
+            var done = incrementCompletedScans();
+            _scanProgressCompleted = done;
+            if (_uiProgressThrottler.ShouldUpdate(force: done == total))
+                await UiThread.RunAsync(() => UpdateScanProgressUi(done, total, force: done == total));
+        }
     }
 
     private void SortQueueArchives()

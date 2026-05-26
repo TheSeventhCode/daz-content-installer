@@ -33,7 +33,8 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         "documentation",
         "readme",
         "templates",
-        "aniBlocks"
+        "aniBlocks",
+        "vehicles"
     };
 
     private static readonly HashSet<string> NestedArchiveExtensions = new(StringComparer.OrdinalIgnoreCase)

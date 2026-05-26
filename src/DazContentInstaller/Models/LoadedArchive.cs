@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using DazContentInstaller.Extensions;
 using DazContentInstaller.Database;
 using DazContentInstaller.Services;
@@ -260,4 +261,7 @@ public partial class LoadedArchive : ViewModelBase
 
         base.OnPropertyChanged(e);
     }
+
+    public static List<LoadedArchive> OrderByDisplayName(IEnumerable<LoadedArchive> archives) =>
+        archives.OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
 }

@@ -35,6 +35,8 @@ public class DazArchiveInstaller(
     IDirectoryService directoryService,
     IDazArchiveScanner archiveScanner,
     DestinationPathLockRegistry destinationPathLockRegistry,
+    ArchiveIdentityLockRegistry archiveIdentityLockRegistry,
+    ArchiveInstallCoordinator archiveInstallCoordinator,
     IArchiveOverrideService archiveOverrideService)
     : IDazArchiveInstaller
 {
@@ -44,7 +46,7 @@ public class DazArchiveInstaller(
         IEnumerable<LoadedArchive> archives,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var archiveList = archives.ToList();
+        var archiveList = LoadedArchive.OrderByDisplayName(archives);
         if (archiveList.Count == 0)
             yield break;
 
@@ -213,18 +215,27 @@ public class DazArchiveInstaller(
     private async IAsyncEnumerable<LoadedArchive> RunInstallWorkersAsync(Guid assetLibraryId,
         IReadOnlyList<LoadedArchive> archiveList, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var maxParallelism = Math.Max(1,
-            Math.Min(settingsService.CurrentSettings.MaxConcurrentArchiveInstalls, archiveList.Count));
-        var channel = Channel.CreateUnbounded<LoadedArchive>(new UnboundedChannelOptions
+        var progressChannel = Channel.CreateUnbounded<LoadedArchive>(new UnboundedChannelOptions
         {
             SingleReader = true,
             SingleWriter = false
         });
-        using var semaphore = new SemaphoreSlim(maxParallelism, maxParallelism);
+        var workChannel = Channel.CreateUnbounded<LoadedArchive>(new UnboundedChannelOptions
+        {
+            SingleReader = false,
+            SingleWriter = true
+        });
 
-        var workerTasks = archiveList
-            .Select(archive =>
-                RunArchiveInstallWorkerAsync(assetLibraryId, archive, semaphore, channel.Writer, cancellationToken))
+        foreach (var archive in archiveList)
+            await workChannel.Writer.WriteAsync(archive, cancellationToken).ConfigureAwait(false);
+
+        workChannel.Writer.Complete();
+
+        var workerCount = Math.Max(1,
+            Math.Min(archiveInstallCoordinator.MaxConcurrentArchiveInstalls, archiveList.Count));
+        var workerTasks = Enumerable.Range(0, workerCount)
+            .Select(_ => RunInstallWorkerLoopAsync(assetLibraryId, workChannel.Reader, progressChannel.Writer,
+                cancellationToken))
             .ToArray();
 
         var completionTask = Task.Run(async () =>
@@ -235,11 +246,11 @@ public class DazArchiveInstaller(
             }
             finally
             {
-                channel.Writer.Complete();
+                progressChannel.Writer.Complete();
             }
         }, cancellationToken);
 
-        await foreach (var progress in channel.Reader.ReadAllAsync(cancellationToken))
+        await foreach (var progress in progressChannel.Reader.ReadAllAsync(cancellationToken))
             yield return progress;
 
         await completionTask.ConfigureAwait(false);
@@ -259,19 +270,24 @@ public class DazArchiveInstaller(
         {
             try
             {
-                await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
-                    .ConfigureAwait(false);
-                var assetLibrary =
-                    await dbContext.AssetLibraries.FirstAsync(x => x.Id == assetLibraryId, cancellationToken)
+                await using (await archiveInstallCoordinator
+                                 .AcquireArchiveInstallSlotAsync(cancellationToken)
+                                 .ConfigureAwait(false))
+                {
+                    await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
                         .ConfigureAwait(false);
-                var existingArchiveEntity = await dbContext.Archives
-                    .Include(x => x.AssetLibrary)
-                    .FirstAsync(x => x.Id == existingArchiveId, cancellationToken)
-                    .ConfigureAwait(false);
+                    var assetLibrary =
+                        await dbContext.AssetLibraries.FirstAsync(x => x.Id == assetLibraryId, cancellationToken)
+                            .ConfigureAwait(false);
+                    var existingArchiveEntity = await dbContext.Archives
+                        .Include(x => x.AssetLibrary)
+                        .FirstAsync(x => x.Id == existingArchiveId, cancellationToken)
+                        .ConfigureAwait(false);
 
-                await foreach (var progress in InstallArchiveAsync(dbContext, assetLibrary, archive,
-                                   existingArchiveEntity, cancellationToken))
-                    await channel.Writer.WriteAsync(progress, cancellationToken).ConfigureAwait(false);
+                    await foreach (var progress in InstallArchiveAsync(dbContext, assetLibrary, archive,
+                                       existingArchiveEntity, cancellationToken))
+                        await channel.Writer.WriteAsync(progress, cancellationToken).ConfigureAwait(false);
+                }
             }
             finally
             {
@@ -285,25 +301,24 @@ public class DazArchiveInstaller(
         await workerTask.ConfigureAwait(false);
     }
 
-    private async Task RunArchiveInstallWorkerAsync(Guid assetLibraryId, LoadedArchive archive, SemaphoreSlim semaphore,
-        ChannelWriter<LoadedArchive> writer, CancellationToken cancellationToken)
+    private async Task RunInstallWorkerLoopAsync(Guid assetLibraryId, ChannelReader<LoadedArchive> workReader,
+        ChannelWriter<LoadedArchive> progressWriter, CancellationToken cancellationToken)
     {
-        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        await foreach (var archive in workReader.ReadAllAsync(cancellationToken))
         {
-            await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
-                .ConfigureAwait(false);
-            var assetLibrary =
-                await dbContext.AssetLibraries.FirstAsync(x => x.Id == assetLibraryId, cancellationToken)
+            await using (await archiveInstallCoordinator.AcquireArchiveInstallSlotAsync(cancellationToken)
+                             .ConfigureAwait(false))
+            {
+                await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
                     .ConfigureAwait(false);
+                var assetLibrary =
+                    await dbContext.AssetLibraries.FirstAsync(x => x.Id == assetLibraryId, cancellationToken)
+                        .ConfigureAwait(false);
 
-            await foreach (var progress in InstallArchiveAsync(dbContext, assetLibrary, archive,
-                               cancellationToken: cancellationToken))
-                await writer.WriteAsync(progress, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            semaphore.Release();
+                await foreach (var progress in InstallArchiveAsync(dbContext, assetLibrary, archive,
+                                   cancellationToken: cancellationToken))
+                    await progressWriter.WriteAsync(progress, cancellationToken).ConfigureAwait(false);
+            }
         }
     }
 
@@ -331,15 +346,28 @@ public class DazArchiveInstaller(
             yield break;
         }
 
+        var isResumedInstall = existingArchiveEntity is not null;
+
         if (existingArchiveEntity is null)
         {
-            existingArchiveEntity = await FindResumableArchiveAsync(dbContext, assetLibrary.Id, sourceInfo.Name,
-                    (ulong)sourceInfo.Length, cancellationToken)
-                .ConfigureAwait(false);
+            var archiveIdentityKey = ArchiveIdentityLockRegistry.CreateLockKey(
+                assetLibrary.Id, sourceInfo.Name, (ulong)sourceInfo.Length);
+            var preparedArchive = await archiveIdentityLockRegistry.ExecuteAsync(archiveIdentityKey, () =>
+                    PrepareArchiveEntityForInstallAsync(dbContext, assetLibrary, sourceInfo, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
 
-            if (existingArchiveEntity is not null)
-                await PrepareExistingArchiveForReinstallAsync(dbContext, existingArchiveEntity, cancellationToken)
-                    .ConfigureAwait(false);
+            if (preparedArchive.IsDuplicate)
+            {
+                PublishArchiveProgress(archive, ArchiveStatus.Duplicate, "Archive already installed",
+                    errorMessage: "An archive with the same name and size is already tracked for this library.",
+                    progressPercent: 100);
+                if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
+                    yield return archive;
+                yield break;
+            }
+
+            existingArchiveEntity = preparedArchive.ArchiveEntity;
+            isResumedInstall = preparedArchive.IsResumed;
         }
 
         Archive archiveEntity;
@@ -353,40 +381,13 @@ public class DazArchiveInstaller(
         }
         else
         {
-            var duplicateExists = await dbContext.Archives.AnyAsync(x =>
-                    x.AssetLibraryId == assetLibrary.Id &&
-                    x.ParentArchiveId == null &&
-                    x.ArchiveName == sourceInfo.Name &&
-                    x.ArchiveSize == (ulong)sourceInfo.Length &&
-                    x.Status == ArchiveStatus.Installed,
-                cancellationToken);
-
-            if (duplicateExists)
-            {
-                PublishArchiveProgress(archive, ArchiveStatus.Duplicate, "Archive already installed",
-                    errorMessage: "An archive with the same name and size is already tracked for this library.",
-                    progressPercent: 100);
-                if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
-                    yield return archive;
-                yield break;
-            }
-
-            archiveEntity = new Archive
-            {
-                ArchiveName = sourceInfo.Name,
-                ArchiveSize = (ulong)sourceInfo.Length,
-                Status = ArchiveStatus.Loading,
-                AssetLibraryId = assetLibrary.Id,
-                InstallStartedAt = DateTime.Now
-            };
-
-            dbContext.Archives.Add(archiveEntity);
+            throw new InvalidOperationException("Archive entity was not prepared for installation.");
         }
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         archive.ArchiveId = archiveEntity.Id;
 
-        var scanResult = existingArchiveEntity is not null ? null : archive.CachedScanResult;
+        var scanResult = isResumedInstall ? null : archive.CachedScanResult;
         Exception? scanFailure = null;
         if (scanResult is null)
         {
@@ -491,7 +492,7 @@ public class DazArchiveInstaller(
         ApplyArchiveFingerprints(installableEntries, archiveEntity);
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        if (existingArchiveEntity is null)
+        if (!isResumedInstall)
         {
             var contentDuplicateExists = await dbContext.Archives.AnyAsync(x =>
                     x.AssetLibraryId == assetLibrary.Id &&
@@ -513,7 +514,7 @@ public class DazArchiveInstaller(
             }
         }
 
-        if (existingArchiveEntity is null && settingsService.CurrentSettings.CreateBackupBeforeInstall)
+        if (!isResumedInstall && settingsService.CurrentSettings.CreateBackupBeforeInstall)
         {
             PublishArchiveProgress(archive, ArchiveStatus.Loading, "Creating archive backup");
             if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
@@ -561,7 +562,7 @@ public class DazArchiveInstaller(
             yield return archive;
 
         var skippedDuplicateCount = 0;
-        var persistImmediately = settingsService.CurrentSettings.MaxConcurrentArchiveInstalls > 1;
+        var persistImmediately = archiveInstallCoordinator.AllowsConcurrentPersistence;
         var previousAutoDetectChanges = dbContext.ChangeTracker.AutoDetectChangesEnabled;
         dbContext.ChangeTracker.AutoDetectChangesEnabled = false;
         try
@@ -809,36 +810,95 @@ public class DazArchiveInstaller(
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    private static async Task<PreparedArchiveEntityResult> PrepareArchiveEntityForInstallAsync(
+        ApplicationDbContext dbContext, AssetLibrary assetLibrary, FileInfo sourceInfo,
+        CancellationToken cancellationToken)
+    {
+        var resumableArchive = await FindResumableArchiveAsync(dbContext, assetLibrary.Id, sourceInfo.Name,
+                (ulong)sourceInfo.Length, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (resumableArchive is not null)
+        {
+            await PrepareExistingArchiveForReinstallAsync(dbContext, resumableArchive, cancellationToken)
+                .ConfigureAwait(false);
+            return new PreparedArchiveEntityResult(resumableArchive, IsDuplicate: false, IsResumed: true);
+        }
+
+        var duplicateExists = await dbContext.Archives.AnyAsync(x =>
+                x.AssetLibraryId == assetLibrary.Id &&
+                x.ParentArchiveId == null &&
+                x.ArchiveName == sourceInfo.Name &&
+                x.ArchiveSize == (ulong)sourceInfo.Length &&
+                x.Status == ArchiveStatus.Installed,
+            cancellationToken).ConfigureAwait(false);
+
+        if (duplicateExists)
+            return new PreparedArchiveEntityResult(null, IsDuplicate: true, IsResumed: false);
+
+        var archiveEntity = new Archive
+        {
+            ArchiveName = sourceInfo.Name,
+            ArchiveSize = (ulong)sourceInfo.Length,
+            Status = ArchiveStatus.Loading,
+            AssetLibraryId = assetLibrary.Id,
+            InstallStartedAt = DateTime.Now
+        };
+
+        dbContext.Archives.Add(archiveEntity);
+        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return new PreparedArchiveEntityResult(archiveEntity, IsDuplicate: false, IsResumed: false);
+    }
+
     private static async Task<InstalledFile> FindOrCreateInstalledFileAsync(ApplicationDbContext dbContext,
         Guid assetLibraryId, string installedDirectory, string fileName, CancellationToken cancellationToken)
     {
-        var localMatch = dbContext.InstalledFiles.Local.FirstOrDefault(x =>
-            x.AssetLibraryId == assetLibraryId &&
-            x.InstalledPath == installedDirectory &&
-            x.FileName == fileName);
-        if (localMatch is not null)
-            return localMatch;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var localMatch = dbContext.InstalledFiles.Local.FirstOrDefault(x =>
+                x.AssetLibraryId == assetLibraryId &&
+                x.InstalledPath == installedDirectory &&
+                x.FileName == fileName);
+            if (localMatch is not null)
+                return localMatch;
 
-        var installedFile = await dbContext.InstalledFiles
-            .FirstOrDefaultAsync(x =>
+            var installedFile = await dbContext.InstalledFiles
+                .FirstOrDefaultAsync(x =>
+                        x.AssetLibraryId == assetLibraryId &&
+                        x.InstalledPath == installedDirectory &&
+                        x.FileName == fileName,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (installedFile is not null)
+                return installedFile;
+
+            installedFile = new InstalledFile
+            {
+                AssetLibraryId = assetLibraryId,
+                InstalledPath = installedDirectory,
+                FileName = fileName
+            };
+            dbContext.InstalledFiles.Add(installedFile);
+
+            try
+            {
+                await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                return installedFile;
+            }
+            catch (DbUpdateException) when (attempt == 0)
+            {
+                dbContext.Entry(installedFile).State = EntityState.Detached;
+            }
+        }
+
+        return await dbContext.InstalledFiles
+            .FirstAsync(x =>
                     x.AssetLibraryId == assetLibraryId &&
                     x.InstalledPath == installedDirectory &&
                     x.FileName == fileName,
                 cancellationToken)
             .ConfigureAwait(false);
-
-        if (installedFile is not null)
-            return installedFile;
-
-        installedFile = new InstalledFile
-        {
-            AssetLibraryId = assetLibraryId,
-            InstalledPath = installedDirectory,
-            FileName = fileName
-        };
-        dbContext.InstalledFiles.Add(installedFile);
-        await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return installedFile;
     }
 
     private async Task<InstallEntryResult> InstallEntryAsync(ApplicationDbContext dbContext, AssetLibrary assetLibrary,
@@ -1268,6 +1328,8 @@ public class DazArchiveInstaller(
         Installed,
         SkippedDuplicate
     }
+
+    private readonly record struct PreparedArchiveEntityResult(Archive? ArchiveEntity, bool IsDuplicate, bool IsResumed);
 
     private sealed class InstallableArchiveEntry
     {

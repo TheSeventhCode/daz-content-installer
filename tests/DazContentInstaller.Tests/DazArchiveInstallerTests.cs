@@ -910,10 +910,13 @@ public class DazArchiveInstallerTests
                 assetLibrary);
         }
 
-        public IDazArchiveInstaller CreateInstaller(IDazArchiveScanner? archiveScanner = null)
+        public IDazArchiveInstaller CreateInstaller(IDazArchiveScanner? archiveScanner = null,
+            ArchiveInstallCoordinator? archiveInstallCoordinator = null)
         {
             var directoryService = new DirectoryService(SettingsService.CurrentSettings);
             var destinationPathLockRegistry = new DestinationPathLockRegistry();
+            var archiveIdentityLockRegistry = new ArchiveIdentityLockRegistry();
+            var coordinator = archiveInstallCoordinator ?? new ArchiveInstallCoordinator(SettingsService);
             var archiveOverrideService = new ArchiveOverrideService(
                 DbContextFactory,
                 Config,
@@ -925,6 +928,8 @@ public class DazArchiveInstallerTests
                 directoryService,
                 archiveScanner ?? new DazArchiveScanner(directoryService),
                 destinationPathLockRegistry,
+                archiveIdentityLockRegistry,
+                coordinator,
                 archiveOverrideService);
         }
 
