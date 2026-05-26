@@ -80,6 +80,38 @@ public class QueueProgressAggregatorTests
         status.ShouldBe("Install queue finished");
     }
 
+    [Fact]
+    public void ComputeInstallProgress_CountsDuplicatesAndErrorsAsFinished()
+    {
+        var queue = new List<LoadedArchive>
+        {
+            CreateProgressArchive(ArchiveStatus.Installed, 100),
+            CreateProgressArchive(ArchiveStatus.Duplicate, 100),
+            CreateProgressArchive(ArchiveStatus.Duplicate, 100),
+            CreateProgressArchive(ArchiveStatus.Error, 100)
+        };
+
+        var (percent, status) = QueueProgressAggregator.ComputeInstallProgress(queue);
+
+        percent.ShouldBe(100d);
+        status.ShouldBe("Install queue finished (1 installed, 2 duplicates, 1 failed)");
+    }
+
+    [Fact]
+    public void ComputeInstallProgress_ReportsDuplicateOnlyFinishedStatus()
+    {
+        var queue = new List<LoadedArchive>
+        {
+            CreateProgressArchive(ArchiveStatus.Duplicate, 100),
+            CreateProgressArchive(ArchiveStatus.Duplicate, 100)
+        };
+
+        var (percent, status) = QueueProgressAggregator.ComputeInstallProgress(queue);
+
+        percent.ShouldBe(100d);
+        status.ShouldBe("Install queue finished (0 installed, 2 duplicates)");
+    }
+
     private static LoadedArchive CreateProgressArchive(ArchiveStatus status, double progressPercent)
     {
         var archive = new LoadedArchive(Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.zip"))

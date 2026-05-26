@@ -310,7 +310,7 @@ public class DazArchiveInstaller(
         if (!sourceInfo.Exists)
         {
             PublishArchiveProgress(archive, ArchiveStatus.Error, "Archive file not found.",
-                errorMessage: "Archive file not found.");
+                errorMessage: "Archive file not found.", progressPercent: 100);
             if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
                 yield return archive;
             yield break;
@@ -349,7 +349,8 @@ public class DazArchiveInstaller(
             if (duplicateExists)
             {
                 PublishArchiveProgress(archive, ArchiveStatus.Duplicate, "Archive already installed",
-                    errorMessage: "An archive with the same name and size is already tracked for this library.");
+                    errorMessage: "An archive with the same name and size is already tracked for this library.",
+                    progressPercent: 100);
                 if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
                     yield return archive;
                 yield break;
@@ -421,7 +422,7 @@ public class DazArchiveInstaller(
             archiveEntity.ErrorMessage = "No DAZ content directories were found in this archive.";
             archiveEntity.InstallCompletedAt = DateTime.Now;
             PublishArchiveProgress(archive, ArchiveStatus.Error, archiveEntity.ErrorMessage,
-                errorMessage: archiveEntity.ErrorMessage);
+                errorMessage: archiveEntity.ErrorMessage, progressPercent: 100);
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
                 yield return archive;
@@ -465,7 +466,7 @@ public class DazArchiveInstaller(
             archiveEntity.ErrorMessage = "No DAZ content directories were found in this archive.";
             archiveEntity.InstallCompletedAt = DateTime.Now;
             PublishArchiveProgress(archive, ArchiveStatus.Error, archiveEntity.ErrorMessage,
-                errorMessage: archiveEntity.ErrorMessage, totalFiles: 0);
+                errorMessage: archiveEntity.ErrorMessage, totalFiles: 0, progressPercent: 100);
             await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
                 yield return archive;
@@ -489,7 +490,8 @@ public class DazArchiveInstaller(
             {
                 await RemoveArchiveTreeAsync(dbContext, archiveEntity.Id, cancellationToken).ConfigureAwait(false);
                 PublishArchiveProgress(archive, ArchiveStatus.Duplicate, "Archive already installed",
-                    errorMessage: "An archive with identical content is already tracked for this library.");
+                    errorMessage: "An archive with identical content is already tracked for this library.",
+                    progressPercent: 100);
                 if (await YieldArchiveProgressAsync(archive, ref lastProgressYieldTicks, force: true))
                     yield return archive;
                 yield break;
@@ -1042,7 +1044,7 @@ public class DazArchiveInstaller(
         archiveEntity.ErrorMessage = ex.Message;
         archiveEntity.InstallCompletedAt = DateTime.Now;
 
-        PublishArchiveProgress(archive, ArchiveStatus.Error, ex.Message, errorMessage: ex.Message);
+        PublishArchiveProgress(archive, ArchiveStatus.Error, ex.Message, errorMessage: ex.Message, progressPercent: 100);
 
         await dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }

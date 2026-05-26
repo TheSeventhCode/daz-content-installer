@@ -370,7 +370,6 @@ public partial class MainWindowViewModel(
             await RefreshInstalledArchivesAsync();
             InstallQueueCommand.NotifyCanExecuteChanged();
             SortQueueArchives();
-            StatusText = "Install queue finished";
         }
         finally
         {
