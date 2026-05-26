@@ -45,8 +45,7 @@ public class AssetLibraryStatisticsService(IDbContextFactory<ApplicationDbContex
 
         var fileCount = await installRecordQuery.CountAsync(cancellationToken);
         var activeFileCount = await installRecordQuery
-            .CountAsync(x => !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled,
-                cancellationToken);
+            .CountAsync(InstallRecordActiveFilters.IsActiveOnDiskOwnerExpression, cancellationToken);
         var totalContentSize = fileCount == 0
             ? 0UL
             : (ulong)await installRecordQuery.SumAsync(x => (decimal)x.AssetFile.FileSize, cancellationToken);

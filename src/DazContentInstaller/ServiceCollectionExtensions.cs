@@ -37,6 +37,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IArchiveFileDetailsService, ArchiveFileDetailsService>();
         services.AddSingleton<DestinationPathLockRegistry>();
         services.AddSingleton<IArchiveOverrideService, ArchiveOverrideService>();
+        services.AddSingleton<IInterruptedInstallRecoveryService, InterruptedInstallRecoveryService>();
         services.AddTransient<IDazArchiveInstaller>(sp =>
             new DazArchiveInstaller(
                 sp.GetRequiredService<IDbContextFactory<ApplicationDbContext>>(),

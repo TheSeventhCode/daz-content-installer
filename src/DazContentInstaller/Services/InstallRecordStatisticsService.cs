@@ -12,16 +12,18 @@ public sealed record InstallRecordCounts(
     int FileCount,
     int ActiveFileCount,
     int ReplacedFileCount,
-    int SkippedFileCount)
+    int SkippedFileCount,
+    int PendingFileCount)
 {
-    public static InstallRecordCounts Empty { get; } = new(0, 0, 0, 0);
+    public static InstallRecordCounts Empty { get; } = new(0, 0, 0, 0, 0);
 
     public InstallRecordCounts Add(InstallRecordCounts other) =>
         new(
             FileCount + other.FileCount,
             ActiveFileCount + other.ActiveFileCount,
             ReplacedFileCount + other.ReplacedFileCount,
-            SkippedFileCount + other.SkippedFileCount);
+            SkippedFileCount + other.SkippedFileCount,
+            PendingFileCount + other.PendingFileCount);
 }
 
 public interface IInstallRecordStatisticsService
@@ -53,11 +55,10 @@ public sealed class InstallRecordStatisticsService : IInstallRecordStatisticsSer
 
         return new InstallRecordCounts(
             await query.CountAsync(cancellationToken),
-            await query.CountAsync(
-                x => !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled,
-                cancellationToken),
+            await query.CountAsync(InstallRecordActiveFilters.IsActiveOnDiskOwnerExpression, cancellationToken),
             await query.CountAsync(x => x.InstallRecordStatus == InstallRecordStatus.Replaced, cancellationToken),
-            await query.CountAsync(x => x.InstallRecordStatus == InstallRecordStatus.Skipped, cancellationToken));
+            await query.CountAsync(x => x.InstallRecordStatus == InstallRecordStatus.Skipped, cancellationToken),
+            await query.CountAsync(x => x.InstallRecordStatus == InstallRecordStatus.Pending, cancellationToken));
     }
 
     public async Task<IReadOnlyDictionary<Guid, InstallRecordCounts>> GetCountsGroupedByArchiveIdAsync(
@@ -77,9 +78,13 @@ public sealed class InstallRecordStatisticsService : IInstallRecordStatisticsSer
                 ArchiveId = g.Key,
                 FileCount = g.Count(),
                 ActiveFileCount = g.Count(x =>
-                    !x.HasBeenOverriden && x.InstallRecordStatus != InstallRecordStatus.Uninstalled),
+                    !x.HasBeenOverriden &&
+                    (x.InstallRecordStatus == InstallRecordStatus.Installed ||
+                     x.InstallRecordStatus == InstallRecordStatus.Replaced ||
+                     x.InstallRecordStatus == InstallRecordStatus.Skipped)),
                 ReplacedFileCount = g.Count(x => x.InstallRecordStatus == InstallRecordStatus.Replaced),
-                SkippedFileCount = g.Count(x => x.InstallRecordStatus == InstallRecordStatus.Skipped)
+                SkippedFileCount = g.Count(x => x.InstallRecordStatus == InstallRecordStatus.Skipped),
+                PendingFileCount = g.Count(x => x.InstallRecordStatus == InstallRecordStatus.Pending)
             })
             .ToListAsync(cancellationToken);
 
@@ -89,6 +94,7 @@ public sealed class InstallRecordStatisticsService : IInstallRecordStatisticsSer
                 x.FileCount,
                 x.ActiveFileCount,
                 x.ReplacedFileCount,
-                x.SkippedFileCount));
+                x.SkippedFileCount,
+                x.PendingFileCount));
     }
 }

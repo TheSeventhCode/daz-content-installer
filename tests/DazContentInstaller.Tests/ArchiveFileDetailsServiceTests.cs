@@ -1,3 +1,4 @@
+using DazContentInstaller.Database;
 using DazContentInstaller.Models;
 using DazContentInstaller.Services;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +35,34 @@ public class ArchiveFileDetailsServiceTests
         rows[0].FileHash.ShouldNotBeNullOrWhiteSpace();
         rows[0].InstallRecordStatus.ShouldBe(Database.InstallRecordStatus.Installed);
         rows[0].HasBeenOverriden.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task GetInstallRecordRowsAsync_IncludesPendingRowsForFailedInstalls()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var archivePath = fixture.CreateArchive("content.zip",
+            ("data/author/product/file1.txt", "one"),
+            ("data/author/product/file2.txt", "two"));
+        var installer = fixture.CreateInstaller();
+
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+
+        var archive = await fixture.DbContext.Archives.SingleAsync();
+        var records = await fixture.DbContext.InstallRecords
+            .Include(x => x.AssetFile)
+            .OrderBy(x => x.AssetFile.ArchiveRelativePath)
+            .ToListAsync();
+        records[1].InstallRecordStatus = InstallRecordStatus.Pending;
+        archive.Status = ArchiveStatus.Error;
+        await fixture.DbContext.SaveChangesAsync();
+
+        var service = new ArchiveFileDetailsService();
+        var rows = await service.GetInstallRecordRowsAsync(fixture.DbContext, [archive.Id]);
+
+        rows.Count.ShouldBe(2);
+        rows.Count(x => x.InstallRecordStatus == InstallRecordStatus.Pending).ShouldBe(1);
+        rows.Count(x => x.InstallRecordStatus == InstallRecordStatus.Installed).ShouldBe(1);
     }
 
     [Fact]

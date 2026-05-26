@@ -25,7 +25,8 @@ public partial class MainWindowViewModel(
     IAssetLibraryStatisticsService assetLibraryStatisticsService,
     IInstallRecordStatisticsService installRecordStatisticsService,
     IArchiveFileDetailsService archiveFileDetailsService,
-    IArchiveOverrideService archiveOverrideService)
+    IArchiveOverrideService archiveOverrideService,
+    IInterruptedInstallRecoveryService interruptedInstallRecoveryService)
     : ViewModelBase
 {
     private const int CollectionUpdateBatchSize = 50;
@@ -169,6 +170,7 @@ public partial class MainWindowViewModel(
     {
         RegisterSelectionHandlers();
         await settingsService.EnsureSettingsLoadedAsync();
+        await interruptedInstallRecoveryService.RecoverInterruptedInstallsAsync();
         await LoadLibrariesAsync();
         await RefreshInstalledArchivesAsync();
     }
