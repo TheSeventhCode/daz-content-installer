@@ -74,6 +74,20 @@ public class DazArchiveInstaller(
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
         var filesToDelete = new List<(string FullPath, string LibraryRoot)>();
+        var uninstallRecordIds = installRecords.Select(x => x.Id).ToHashSet();
+        var installedFileIds = installRecords.Select(x => x.InstalledFileId).Distinct().ToList();
+        var remainingActiveOwnerFileIds = (await dbContext.InstallRecords
+                .Where(x => installedFileIds.Contains(x.InstalledFileId)
+                            && !uninstallRecordIds.Contains(x.Id)
+                            && !x.HasBeenOverriden
+                            && (x.InstallRecordStatus == InstallRecordStatus.Installed ||
+                                x.InstallRecordStatus == InstallRecordStatus.Replaced ||
+                                x.InstallRecordStatus == InstallRecordStatus.Skipped))
+                .Select(x => x.InstalledFileId)
+                .Distinct()
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false))
+            .ToHashSet();
 
         foreach (var record in installRecords)
         {
@@ -82,23 +96,24 @@ public class DazArchiveInstaller(
             record.InstallRecordStatus = InstallRecordStatus.Uninstalled;
             record.HasBeenOverriden = true;
             record.InstalledFile.AssetLibrary.LastUsed = DateTime.Now;
+        }
 
-            var hasRemainingActiveOwners = await dbContext.InstallRecords.AnyAsync(x =>
-                    x.InstalledFileId == record.InstalledFileId &&
-                    x.Id != record.Id &&
-                    !x.HasBeenOverriden &&
-                    (x.InstallRecordStatus == InstallRecordStatus.Installed ||
-                     x.InstallRecordStatus == InstallRecordStatus.Replaced ||
-                     x.InstallRecordStatus == InstallRecordStatus.Skipped),
-                cancellationToken).ConfigureAwait(false);
+        foreach (var group in installRecords.GroupBy(x => x.InstalledFileId))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var representative = group.First();
+            var hasRemainingActiveOwners = remainingActiveOwnerFileIds.Contains(group.Key);
 
             if (hasRemainingActiveOwners)
                 continue;
 
-            var libraryRoot = GetCanonicalPath(record.InstalledFile.AssetLibrary.Path);
-            var fullPath = Path.Combine(libraryRoot, record.InstalledFile.InstalledPath, record.InstalledFile.FileName);
+            var libraryRoot = GetCanonicalPath(representative.InstalledFile.AssetLibrary.Path);
+            var fullPath = Path.Combine(libraryRoot, representative.InstalledFile.InstalledPath,
+                representative.InstalledFile.FileName);
+            var fileExists = File.Exists(fullPath);
 
-            if (File.Exists(fullPath))
+            if (fileExists)
                 filesToDelete.Add((fullPath, libraryRoot));
         }
 
