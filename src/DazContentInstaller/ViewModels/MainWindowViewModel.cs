@@ -56,6 +56,9 @@ public partial class MainWindowViewModel(
     [NotifyCanExecuteChangedFor(nameof(RemoveQueuedArchivesCommand))]
     public partial bool IsBusy { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsBlocked { get; set; }
+
     [ObservableProperty] public partial string StatusText { get; set; } = "Ready";
 
     [ObservableProperty] public partial double ProgressPercent { get; set; }
@@ -234,6 +237,7 @@ public partial class MainWindowViewModel(
     [RelayCommand]
     private async Task AddArchivesAsync()
     {
+        IsBlocked = false;
         var paths = await fileDialogService.OpenArchiveFilesAsync();
         var addedArchives = new List<LoadedArchive>();
         foreach (var path in paths.Where(path => QueueArchives.All(existing =>
@@ -333,6 +337,7 @@ public partial class MainWindowViewModel(
     [RelayCommand(CanExecute = nameof(CanInstallQueue))]
     private async Task InstallQueueAsync()
     {
+        IsBlocked = false;
         if (SelectedAssetLibrary is null)
             return;
 
@@ -407,6 +412,7 @@ public partial class MainWindowViewModel(
     [RelayCommand(CanExecute = nameof(CanUninstallSelectedArchive))]
     private async Task UninstallSelectedArchiveAsync()
     {
+        IsBlocked = false;
         var toUninstall = SelectedInstalledArchives
             .Where(IsUninstallEligible)
             .ToList();
@@ -447,6 +453,7 @@ public partial class MainWindowViewModel(
                     ? blockedMessages[0]
                     : string.Join(" · ", blockedMessages);
                 ProgressPercent = 100;
+                IsBlocked = true;
                 return;
             }
 
@@ -466,6 +473,7 @@ public partial class MainWindowViewModel(
     [RelayCommand(CanExecute = nameof(CanReinstallSelectedArchive))]
     private async Task ReinstallSelectedArchiveAsync()
     {
+        IsBlocked = false;
         var toReinstall = SelectedInstalledArchives
             .Where(x => x.Status == ArchiveStatus.Uninstalled && File.Exists(x.BackupPath))
             .ToList();
@@ -530,6 +538,7 @@ public partial class MainWindowViewModel(
     [RelayCommand(CanExecute = nameof(CanForgetSelectedArchive))]
     private async Task ForgetSelectedArchiveAsync()
     {
+        IsBlocked = false;
         var toForget = SelectedInstalledArchives
             .Where(x => x.Status is ArchiveStatus.Uninstalled or ArchiveStatus.Error)
             .ToList();

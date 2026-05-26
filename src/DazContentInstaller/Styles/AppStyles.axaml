@@ -77,6 +77,20 @@
         <Setter Property="Background" Value="#1A2340" />
     </Style>
 
+    <Style Selector="Border.statusBar.error">
+        <Setter Property="BorderBrush" Value="{DynamicResource ErrorBrush}" />
+        <Setter Property="BorderThickness" Value="2" />
+        <Setter Property="Background" Value="#1A0F0F" />
+    </Style>
+
+    <Style Selector="Border.working">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <Style Selector="Border.working.error">
+        <Setter Property="Background" Value="{DynamicResource ErrorBrush}" />
+    </Style>
+
     <Style Selector="TextBlock.sectionTitle">
         <Setter Property="FontSize" Value="18" />
         <Setter Property="FontWeight" Value="SemiBold" />
@@ -114,6 +128,10 @@
 
     <Style Selector="ProgressBar.activity">
         <Setter Property="Height" Value="14" />
+    </Style>
+
+    <Style Selector="ProgressBar.activity.error">
+        <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
     </Style>
 
     <Style Selector="ListBox">

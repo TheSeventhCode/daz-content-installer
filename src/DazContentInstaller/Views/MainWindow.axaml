@@ -60,12 +60,14 @@
         <Border DockPanel.Dock="Bottom"
                 Classes="card statusBar"
                 Classes.busy="{Binding IsBusy}"
+                Classes.error="{Binding IsBlocked}"
                 Padding="12"
                 Margin="0,16,0,0">
             <Grid ColumnDefinitions="Auto,2*,3*" RowDefinitions="Auto,Auto">
                 <Border Grid.RowSpan="2"
                         IsVisible="{Binding IsBusy}"
-                        Background="{DynamicResource AccentBrush}"
+                        Classes="working"
+                        Classes.error="{Binding IsBlocked}"
                         CornerRadius="999"
                         Padding="10,6"
                         Margin="0,0,12,0"
@@ -97,7 +99,8 @@
                              Minimum="0"
                              Maximum="100"
                              Value="{Binding ProgressPercent}"
-                             IsIndeterminate="{Binding ShowIndeterminateProgress}" />
+                             IsIndeterminate="{Binding ShowIndeterminateProgress}"
+                             Classes.error="{Binding IsBlocked}" />
             </Grid>
         </Border>
 
