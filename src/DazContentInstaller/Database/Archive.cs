@@ -30,9 +30,9 @@ public class Archive
     /// </summary>
     [StringLength(1024)]
     public string? ContentFingerprint { get; set; }
-    
+
     // public string? CustomAssetsBasePath { get; set; }
-    
+
     /// <summary>
     /// Current installation status
     /// </summary>
@@ -77,12 +77,12 @@ public class Archive
     /// </summary>
     [StringLength(32)]
     public string? ThumbnailFileExtension { get; set; }
-    
+
     /// <summary>
     /// Files part of this archive
     /// </summary>
     public List<AssetFile> AssetFiles { get; set; } = [];
-    
+
     /// <summary>
     /// ID of the asset library this archive is part of
     /// </summary>
@@ -91,7 +91,7 @@ public class Archive
     /// Asset library this archive is part of
     /// </summary>
     public AssetLibrary AssetLibrary { get; set; } = null!;
-    
+
     /// <summary>
     /// Potential sub archives that were included in this archive 
     /// </summary>
@@ -101,7 +101,7 @@ public class Archive
     /// Potential parent archive id this archive was included in
     /// </summary>
     public Guid? ParentArchiveId { get; set; }
-    
+
     /// <summary>
     /// Potential parent archive this archive was included in
     /// </summary>

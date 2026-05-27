@@ -246,4 +246,81 @@ public class CrashSafeInstallTrackingTests
         (await fixture.DbContext.InstalledFiles.CountAsync()).ShouldBe(1);
         (await fixture.DbContext.InstallRecords.CountAsync()).ShouldBe(2);
     }
+
+    [Fact]
+    public async Task InstallArchivesAsync_PersistsInstalledRowsInFiveHundredFileBatches()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var blockerPath = Path.Combine(fixture.LibraryPath, "data", "batch", "blocker.txt");
+        Directory.CreateDirectory(blockerPath);
+        var entries = Enumerable.Range(1, 500)
+            .Select(i => ($"data/batch/file{i:D3}.txt", $"content-{i}"))
+            .Append(("data/batch/blocker.txt", "boom"))
+            .ToArray();
+        var archivePath = fixture.CreateArchive("content.zip", entries);
+        var installer = fixture.CreateInstaller();
+
+        var results = await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)])
+            .ToListAsync();
+
+        results.Last().ArchiveStatus.ShouldBe(ArchiveStatus.Error);
+        fixture.DbContext.ChangeTracker.Clear();
+
+        var records = await fixture.DbContext.InstallRecords
+            .Include(x => x.AssetFile)
+            .ToListAsync();
+        records.Count.ShouldBe(501);
+        records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Installed).ShouldBe(500);
+        records.Count(x => x.InstallRecordStatus == InstallRecordStatus.Pending).ShouldBe(1);
+        records.Single(x => x.InstallRecordStatus == InstallRecordStatus.Pending)
+            .AssetFile.InstalledRelativePath.ShouldBe(Path.Combine("data", "batch", "blocker.txt"));
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "batch", "file500.txt")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task UninstallArchiveAsync_RestoresInterruptedReplacementBackup()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
+        var firstArchive = fixture.CreateArchive("first.zip", ("data/shared/file.txt", "old"));
+        var installer = fixture.CreateInstaller();
+        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(firstArchive)]).ToListAsync();
+
+        var blockerPath = Path.Combine(fixture.LibraryPath, "data", "shared", "blocker.txt");
+        Directory.CreateDirectory(blockerPath);
+        var secondArchive = fixture.CreateArchive("second.zip",
+            ("data/shared/file.txt", "new"),
+            ("data/shared/blocker.txt", "boom"));
+
+        var results = await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(secondArchive)])
+            .ToListAsync();
+
+        results.Last().ArchiveStatus.ShouldBe(ArchiveStatus.Error);
+        (await File.ReadAllTextAsync(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt")))
+            .ShouldBe("new");
+
+        fixture.DbContext.ChangeTracker.Clear();
+        var interruptedArchive = await fixture.DbContext.Archives.SingleAsync(x => x.ArchiveName == "second.zip");
+        var operation = await fixture.DbContext.InstallFileOperations.SingleAsync();
+        operation.Status.ShouldBe(InstallFileOperationStatus.Pending);
+        operation.BackupFilePath.ShouldNotBeNull();
+        File.Exists(operation.BackupFilePath).ShouldBeTrue();
+
+        await installer.UninstallArchiveAsync(interruptedArchive.Id);
+
+        (await File.ReadAllTextAsync(Path.Combine(fixture.LibraryPath, "data", "shared", "file.txt")))
+            .ShouldBe("old");
+        File.Exists(operation.BackupFilePath).ShouldBeFalse();
+
+        fixture.DbContext.ChangeTracker.Clear();
+        var records = await fixture.DbContext.InstallRecords
+            .Include(x => x.Archive)
+            .ToListAsync();
+        var originalRecord = records.Single(x => x.Archive.ArchiveName == "first.zip");
+        originalRecord.InstallRecordStatus.ShouldBe(InstallRecordStatus.Installed);
+        originalRecord.HasBeenOverriden.ShouldBeFalse();
+
+        records.Where(x => x.Archive.ArchiveName == "second.zip")
+            .ShouldAllBe(x => x.InstallRecordStatus == InstallRecordStatus.Uninstalled);
+        (await fixture.DbContext.InstallFileOperations.SingleAsync()).Status.ShouldBe(InstallFileOperationStatus.Restored);
+    }
 }

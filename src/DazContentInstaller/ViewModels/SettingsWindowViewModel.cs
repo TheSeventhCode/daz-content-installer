@@ -52,14 +52,14 @@ public partial class SettingsWindowViewModel(
         var libraries = await dbContext.AssetLibraries.OrderBy(x => x.Name).ToListAsync();
         AssetLibraries.Clear();
         foreach (var libraryViewModel in libraries.Select(library => new AssetLibraryItemViewModel
-                 {
-                     Id = library.Id,
-                     Name = library.Name,
-                     Path = library.Path,
-                     ArchiveBackupPath = library.ArchiveBackupPath,
-                     ArchiveThumbnailPath = library.ArchiveThumbnailPath,
-                     IsDefault = library.Id == settings.DefaultAssetLibrary
-                 }))
+        {
+            Id = library.Id,
+            Name = library.Name,
+            Path = library.Path,
+            ArchiveBackupPath = library.ArchiveBackupPath,
+            ArchiveThumbnailPath = library.ArchiveThumbnailPath,
+            IsDefault = library.Id == settings.DefaultAssetLibrary
+        }))
         {
             AssetLibraries.Add(libraryViewModel);
         }

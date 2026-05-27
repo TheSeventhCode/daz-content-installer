@@ -11,32 +11,36 @@ public sealed class DestinationPathLockRegistry
 
     public async Task ExecuteAsync(string lockKey, Func<Task> action, CancellationToken cancellationToken = default)
     {
-        var semaphore = _locks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
-        await semaphore.WaitAsync(cancellationToken);
-        try
-        {
-            await action();
-        }
-        finally
-        {
-            semaphore.Release();
-        }
+        await using var lease = await AcquireAsync(lockKey, cancellationToken);
+        await action();
     }
 
     public async Task<T> ExecuteAsync<T>(string lockKey, Func<Task<T>> action, CancellationToken cancellationToken = default)
     {
+        await using var lease = await AcquireAsync(lockKey, cancellationToken);
+        return await action();
+    }
+
+    public async Task<IAsyncDisposable> AcquireAsync(string lockKey, CancellationToken cancellationToken = default)
+    {
         var semaphore = _locks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
         await semaphore.WaitAsync(cancellationToken);
-        try
-        {
-            return await action();
-        }
-        finally
-        {
-            semaphore.Release();
-        }
+        return new LockLease(semaphore);
     }
 
     public static string CreateLockKey(Guid assetLibraryId, string installedRelativePath) =>
         $"{assetLibraryId:N}:{installedRelativePath}";
+
+    private sealed class LockLease(SemaphoreSlim semaphore) : IAsyncDisposable
+    {
+        private int _released;
+
+        public ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+                semaphore.Release();
+
+            return ValueTask.CompletedTask;
+        }
+    }
 }

@@ -57,10 +57,10 @@ public static class ServiceCollectionExtensions
         services.AddTransient<SettingsWindow>();
         services.AddTransient<ArchiveOverridesWindowViewModel>();
         services.AddTransient<ArchiveOverridesWindow>();
-        
+
         return services;
     }
-    
+
     public static IServiceProvider GetServiceProvider()
     {
         return _serviceProvider ??= new ServiceCollection().CreateServiceCollection().BuildServiceProvider();

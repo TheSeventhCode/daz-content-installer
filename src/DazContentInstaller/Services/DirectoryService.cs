@@ -51,11 +51,11 @@ public class DirectoryService : IDirectoryService
         var appSettings = _settingsProvider();
         if (string.IsNullOrWhiteSpace(appSettings.TempWorkingDirectoryPath))
             return new TempDirectory(Directory.CreateTempSubdirectory("DazContentInstaller"));
-        
+
         Directory.CreateDirectory(appSettings.TempWorkingDirectoryPath);
         var directory = Path.Combine(appSettings.TempWorkingDirectoryPath,
             $"DazContentInstaller-{Guid.NewGuid():N}");
-        
+
         return new TempDirectory(Directory.CreateDirectory(directory));
     }
 }

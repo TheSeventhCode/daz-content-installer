@@ -72,10 +72,10 @@ public class ArchiveOverrideService(
 
         var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var canonicalDirectory in from installedDirectory in installedDirectories
-                 where !string.IsNullOrWhiteSpace(installedDirectory)
-                 select DazArchiveScanner.CanonicalizeInstalledRelativePath(
-                     NormalizeRelativePath(installedDirectory),
-                     libraryRoot))
+                                           where !string.IsNullOrWhiteSpace(installedDirectory)
+                                           select DazArchiveScanner.CanonicalizeInstalledRelativePath(
+                                               NormalizeRelativePath(installedDirectory),
+                                               libraryRoot))
         {
             AddDirectoryAndParents(directories, canonicalDirectory);
         }

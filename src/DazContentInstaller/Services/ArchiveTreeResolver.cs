@@ -25,7 +25,7 @@ public static class ArchiveTreeResolver
 
             if (!childrenByParent.TryGetValue(current, out var children))
                 continue;
-            
+
             foreach (var child in children)
                 queue.Enqueue(child);
         }

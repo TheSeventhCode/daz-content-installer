@@ -65,6 +65,36 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<InstallRecord>()
             .HasIndex(x => new { x.ArchiveId, x.InstalledFileId, x.HasBeenOverriden });
 
+        modelBuilder.Entity<InstallFileOperation>()
+            .HasOne(x => x.Archive)
+            .WithMany()
+            .HasForeignKey(x => x.ArchiveId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<InstallFileOperation>()
+            .HasOne(x => x.InstallRecord)
+            .WithMany()
+            .HasForeignKey(x => x.InstallRecordId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<InstallFileOperation>()
+            .HasOne(x => x.InstalledFile)
+            .WithMany()
+            .HasForeignKey(x => x.InstalledFileId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<InstallFileOperation>()
+            .HasIndex(x => x.ArchiveId);
+
+        modelBuilder.Entity<InstallFileOperation>()
+            .HasIndex(x => x.InstallRecordId);
+
+        modelBuilder.Entity<InstallFileOperation>()
+            .HasIndex(x => x.Status);
+
         modelBuilder.Entity<ArchiveOverride>()
             .HasOne(x => x.RootArchive)
             .WithMany()
@@ -91,5 +121,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<AssetFile> AssetFiles { get; set; }
     public DbSet<InstalledFile> InstalledFiles { get; set; }
     public DbSet<InstallRecord> InstallRecords { get; set; }
+    public DbSet<InstallFileOperation> InstallFileOperations { get; set; }
     public DbSet<ArchiveOverride> ArchiveOverrides { get; set; }
 }
