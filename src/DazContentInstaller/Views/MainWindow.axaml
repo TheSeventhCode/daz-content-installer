@@ -246,67 +246,67 @@
                             </ComboBox.ItemTemplate>
                         </ComboBox>
                     </Grid>
-                    <ListBox Grid.Row="4"
-                             ItemsSource="{Binding FilteredInstalledArchives}"
-                             SelectedItem="{Binding SelectedInstalledArchive}"
-                             SelectedItems="{Binding SelectedInstalledArchives, x:CompileBindings=False}"
-                             SelectionMode="Multiple">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:InstalledArchiveViewModel">
-                                <Border Background="{DynamicResource SurfaceAltBrush}"
-                                        CornerRadius="10"
-                                        Padding="10"
-                                        Margin="0,0,0,10">
-                                    <Grid ColumnDefinitions="84,12,*">
-                                        <Border Width="84"
-                                                Height="84"
-                                                CornerRadius="8"
-                                                Background="{DynamicResource SurfaceBrush}"
-                                                BorderBrush="{DynamicResource BorderBrush}"
-                                                BorderThickness="1"
-                                                IsVisible="{Binding HasThumbnail}">
-                                            <Image Source="{Binding ThumbnailPath, Converter={StaticResource ArchiveThumbnailConverter}}"
-                                                   Stretch="UniformToFill" />
-                                        </Border>
+                    <Grid Grid.Row="4">
+                        <ListBox ItemsSource="{Binding FilteredInstalledArchives}"
+                                 SelectedItem="{Binding SelectedInstalledArchive}"
+                                 SelectedItems="{Binding SelectedInstalledArchives, x:CompileBindings=False}"
+                                 SelectionMode="Multiple">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:InstalledArchiveViewModel">
+                                    <Border Background="{DynamicResource SurfaceAltBrush}"
+                                            CornerRadius="10"
+                                            Padding="10"
+                                            Margin="0,0,0,10">
+                                        <Grid ColumnDefinitions="84,12,*">
+                                            <Border Width="84"
+                                                    Height="84"
+                                                    CornerRadius="8"
+                                                    Background="{DynamicResource SurfaceBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrush}"
+                                                    BorderThickness="1"
+                                                    IsVisible="{Binding HasThumbnail}">
+                                                <Image Source="{Binding ThumbnailPath, Converter={StaticResource ArchiveThumbnailConverter}}"
+                                                       Stretch="UniformToFill" />
+                                            </Border>
 
-                                        <StackPanel Grid.Column="2" Spacing="6">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding EffectiveDisplayName}" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding ArchiveName}"
-                                                               Classes="caption"
-                                                               IsVisible="{Binding HasDistinctDisplayName}" />
-                                                    <TextBlock Text="{Binding AssetLibraryName}" Classes="caption" />
-                                                </StackPanel>
-                                                <Border Grid.Column="1"
-                                                        VerticalAlignment="Center"
-                                                        Background="{Binding Status, Converter={StaticResource ArchiveStatusToBrushConverter}}"
-                                                        CornerRadius="999"
-                                                        Padding="8,4">
-                                                    <TextBlock Text="{Binding Status}"
-                                                               FontSize="11"
-                                                               Foreground="White"
-                                                               VerticalAlignment="Center"
-                                                               TextAlignment="Center" />
-                                                </Border>
-                                            </Grid>
-                                            <ItemsControl ItemsSource="{Binding AssetTypes}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <WrapPanel />
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate x:CompileBindings="False">
-                                                        <Border Background="{Binding ., Converter={StaticResource AssetTypeToBrushConverter}}"
-                                                                CornerRadius="999"
-                                                                Padding="8,2"
-                                                                Margin="0,0,4,4">
-                                                            <TextBlock Text="{Binding .}" FontSize="11" Foreground="White" />
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
+                                            <StackPanel Grid.Column="2" Spacing="6">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding EffectiveDisplayName}" FontWeight="SemiBold" />
+                                                        <TextBlock Text="{Binding ArchiveName}"
+                                                                   Classes="caption"
+                                                                   IsVisible="{Binding HasDistinctDisplayName}" />
+                                                        <TextBlock Text="{Binding AssetLibraryName}" Classes="caption" />
+                                                    </StackPanel>
+                                                    <Border Grid.Column="1"
+                                                            VerticalAlignment="Center"
+                                                            Background="{Binding Status, Converter={StaticResource ArchiveStatusToBrushConverter}}"
+                                                            CornerRadius="999"
+                                                            Padding="8,4">
+                                                        <TextBlock Text="{Binding Status}"
+                                                                   FontSize="11"
+                                                                   Foreground="White"
+                                                                   VerticalAlignment="Center"
+                                                                   TextAlignment="Center" />
+                                                    </Border>
+                                                </Grid>
+                                                <ItemsControl ItemsSource="{Binding AssetTypes}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:CompileBindings="False">
+                                                            <Border Background="{Binding ., Converter={StaticResource AssetTypeToBrushConverter}}"
+                                                                    CornerRadius="999"
+                                                                    Padding="8,2"
+                                                                    Margin="0,0,4,4">
+                                                                <TextBlock Text="{Binding .}" FontSize="11" Foreground="White" />
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
                                             <TextBlock Text="{Binding ArchiveSize, Converter={StaticResource FileSizeConverter}}" Classes="caption" />
                                             <TextBlock Text="{Binding BackupPath}" Classes="caption" TextWrapping="Wrap" />
                                         </StackPanel>
@@ -314,7 +314,22 @@
                                 </Border>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
-                    </ListBox>
+                        </ListBox>
+                        <Border Background="#CC11161D"
+                                CornerRadius="10"
+                                IsVisible="{Binding IsLoadingInstalledArchives}">
+                            <StackPanel VerticalAlignment="Center"
+                                        HorizontalAlignment="Center"
+                                        Spacing="12">
+                                <ProgressBar IsIndeterminate="True"
+                                             Width="140"
+                                             Classes="activity" />
+                                <TextBlock Text="Loading archives…"
+                                           Classes="caption"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
                 </Grid>
             </Border>
 

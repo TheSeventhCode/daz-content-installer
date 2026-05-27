@@ -34,10 +34,10 @@ public partial class MainWindow : Window
         await messageBox.ShowWindowDialogAsync(this);
     }
 
-    private async void OnOpened(object? sender, EventArgs e)
+    private void OnOpened(object? sender, EventArgs e)
     {
         if (DataContext is MainWindowViewModel viewModel)
-            await viewModel.InitializeAsync();
+            _ = viewModel.InitializeAsync();
     }
 
     private async void OpenSettings_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
