@@ -71,14 +71,12 @@ public class ArchiveOverrideService(
             .ToListAsync(cancellationToken);
 
         var directories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var installedDirectory in installedDirectories)
+        foreach (var canonicalDirectory in from installedDirectory in installedDirectories
+                 where !string.IsNullOrWhiteSpace(installedDirectory)
+                 select DazArchiveScanner.CanonicalizeInstalledRelativePath(
+                     NormalizeRelativePath(installedDirectory),
+                     libraryRoot))
         {
-            if (string.IsNullOrWhiteSpace(installedDirectory))
-                continue;
-
-            var canonicalDirectory = DazArchiveScanner.CanonicalizeInstalledRelativePath(
-                NormalizeRelativePath(installedDirectory),
-                libraryRoot);
             AddDirectoryAndParents(directories, canonicalDirectory);
         }
 
@@ -146,15 +144,18 @@ public class ArchiveOverrideService(
 
                 if (existingOverride is not null)
                 {
-                    if (existingOverride.Mode == ArchiveOverrideMode.Replacement &&
-                        !string.IsNullOrWhiteSpace(existingOverride.OriginalFileBackupPath) &&
-                        File.Exists(existingOverride.OriginalFileBackupPath))
+                    switch (existingOverride.Mode)
                     {
-                        File.Copy(existingOverride.OriginalFileBackupPath, destinationPath, overwrite: true);
-                    }
-                    else if (existingOverride.Mode == ArchiveOverrideMode.Addition && File.Exists(destinationPath))
-                    {
-                        File.Delete(destinationPath);
+                        case ArchiveOverrideMode.Replacement when
+                            !string.IsNullOrWhiteSpace(existingOverride.OriginalFileBackupPath) &&
+                            File.Exists(existingOverride.OriginalFileBackupPath):
+                            File.Copy(existingOverride.OriginalFileBackupPath, destinationPath, overwrite: true);
+                            break;
+                        case ArchiveOverrideMode.Addition when File.Exists(destinationPath):
+                            File.Delete(destinationPath);
+                            break;
+                        default:
+                            break;
                     }
 
                     DeleteManagedOverrideFiles(existingOverride);
@@ -170,7 +171,8 @@ public class ArchiveOverrideService(
                 if (File.Exists(destinationPath))
                 {
                     mode = ArchiveOverrideMode.Replacement;
-                    originalBackupPath = Path.Combine(overrideStorageDirectory, $"original{Path.GetExtension(fileName)}");
+                    originalBackupPath =
+                        Path.Combine(overrideStorageDirectory, $"original{Path.GetExtension(fileName)}");
                     File.Copy(destinationPath, originalBackupPath, overwrite: true);
                 }
                 else
@@ -342,10 +344,9 @@ public class ArchiveOverrideService(
         if (string.IsNullOrWhiteSpace(fileName))
             throw new ArgumentException("File name is required.", nameof(fileName));
 
-        if (fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-            throw new ArgumentException("File name contains invalid characters.", nameof(fileName));
-
-        return fileName;
+        return fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            ? throw new ArgumentException("File name contains invalid characters.", nameof(fileName))
+            : fileName;
     }
 
     private static void RemoveEmptyDirectories(string? directory, string stopAtDirectory)

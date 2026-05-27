@@ -23,11 +23,11 @@ public static class ArchiveTreeResolver
             if (!treeIds.Add(current))
                 continue;
 
-            if (childrenByParent.TryGetValue(current, out var children))
-            {
-                foreach (var child in children)
-                    queue.Enqueue(child);
-            }
+            if (!childrenByParent.TryGetValue(current, out var children))
+                continue;
+            
+            foreach (var child in children)
+                queue.Enqueue(child);
         }
 
         return treeIds;

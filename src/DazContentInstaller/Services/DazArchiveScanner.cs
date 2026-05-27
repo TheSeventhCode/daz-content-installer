@@ -16,7 +16,7 @@ public interface IDazArchiveScanner
 
 public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchiveScanner
 {
-    public static readonly HashSet<string> AssetRootDirectories = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> AssetRootDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         "data",
         "runtime",
@@ -145,8 +145,7 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         CancellationToken cancellationToken = default)
     {
         using var workingDirectory = directoryService.GetTempDirectory();
-        return await ScanArchiveFileAsync(archivePath, workingDirectory.DirectoryInfo.FullName, cancellationToken)
-            .ConfigureAwait(false);
+        return await ScanArchiveFileAsync(archivePath, workingDirectory.DirectoryInfo.FullName, cancellationToken);
     }
 
     private static async Task<DazArchiveScanResult> ScanArchiveFileAsync(string archivePath, string workingDirectory,
@@ -157,105 +156,123 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
             throw new FileNotFoundException("Archive file not found.", archivePath);
 
         using var sourceArchive = await Task
-            .Run(() => ArchiveFactory.OpenArchive(archiveInfo.FullName), cancellationToken)
-            .ConfigureAwait(false);
+            .Run(() => ArchiveFactory.OpenArchive(archiveInfo.FullName), cancellationToken);
         return await ScanOpenedArchiveAsync(sourceArchive, archiveInfo.Name, archiveInfo.FullName,
             (ulong)archiveInfo.Length,
-            workingDirectory, captureTopLevelThumbnail: true, cancellationToken).ConfigureAwait(false);
+            workingDirectory, captureTopLevelThumbnail: true, cancellationToken);
     }
 
     private static async Task<DazArchiveScanResult> ScanOpenedArchiveAsync(IArchive sourceArchive, string archiveName,
         string archivePath, ulong archiveSize, string workingDirectory, bool captureTopLevelThumbnail,
         CancellationToken cancellationToken)
     {
-        var files = new List<DazArchiveScanEntry>();
-        var nestedArchives = new List<DazArchiveScanResult>();
-        var categories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var assetTypes = new HashSet<AssetType>();
-        string? contentRoot = null;
-        string? displayName = null;
-        string? thumbnailArchiveRelativePath = null;
+        var scanState = new ArchiveScanState();
 
         foreach (var entry in sourceArchive.Entries.Where(x => !x.IsDirectory))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var normalizedEntryPath = NormalizeArchivePath(entry.Key ?? string.Empty);
-            if (string.IsNullOrWhiteSpace(normalizedEntryPath))
+            if (ShouldSkipEntry(normalizedEntryPath))
                 continue;
 
-            if (ShouldIgnoreArchiveEntry(normalizedEntryPath))
-                continue;
-
-            if (displayName is null && DazProductMetadataReader.IsSupplementDsx(normalizedEntryPath))
-            {
-                await using var supplementStream = await entry.OpenEntryStreamAsync(cancellationToken);
-                using var reader = new StreamReader(supplementStream);
-                displayName = DazProductMetadataReader.TryReadProductName(await reader.ReadToEndAsync(cancellationToken));
-                continue;
-            }
-
-            if (thumbnailArchiveRelativePath is null
-                && captureTopLevelThumbnail
-                && IsTopLevelThumbnailCandidate(normalizedEntryPath))
-            {
-                thumbnailArchiveRelativePath = normalizedEntryPath;
-            }
-
-            if (TryGetInstalledRelativePath(normalizedEntryPath, out var installedRelativePath, out var detectedRoot))
-            {
-                contentRoot ??= detectedRoot;
-                files.Add(new DazArchiveScanEntry
-                {
-                    ArchiveRelativePath = normalizedEntryPath,
-                    InstalledRelativePath = installedRelativePath,
-                    FileSize = entry.Size < 0 ? 0UL : (ulong)entry.Size
-                });
-
-                AddClassification(installedRelativePath, categories, assetTypes);
-                continue;
-            }
-
-            if (!IsNestedArchive(normalizedEntryPath))
-                continue;
-
-            var nestedArchivePath = Path.Combine(workingDirectory,
-                $"{Guid.NewGuid():N}{Path.GetExtension(normalizedEntryPath)}");
-            await using (var sourceStream = await entry.OpenEntryStreamAsync(cancellationToken))
-            await using (var outputStream = File.Create(nestedArchivePath))
-            {
-                await sourceStream.CopyToAsync(outputStream, cancellationToken);
-            }
-
-            var nestedInfo = new FileInfo(nestedArchivePath);
-            using var nestedArchive = await Task
-                .Run(() => ArchiveFactory.OpenArchive(nestedArchivePath), cancellationToken)
-                .ConfigureAwait(false);
-            var nestedScan = await ScanOpenedArchiveAsync(nestedArchive, Path.GetFileName(normalizedEntryPath),
-                normalizedEntryPath, (ulong)nestedInfo.Length, workingDirectory, captureTopLevelThumbnail: false,
-                cancellationToken)
-                .ConfigureAwait(false);
-            nestedArchives.Add(nestedScan);
-
-            foreach (var category in nestedScan.Categories)
-                categories.Add(NormalizeCategory(category));
-            foreach (var assetType in nestedScan.AssetTypes)
-                assetTypes.Add(assetType);
+            await ScanArchiveEntryAsync(entry, normalizedEntryPath, scanState, workingDirectory,
+                    captureTopLevelThumbnail, cancellationToken);
         }
 
-        return new DazArchiveScanResult
+        return scanState.ToScanResult(archiveName, archivePath, archiveSize);
+    }
+
+    private static bool ShouldSkipEntry(string normalizedEntryPath)
+    {
+        return string.IsNullOrWhiteSpace(normalizedEntryPath)
+               || ShouldIgnoreArchiveEntry(normalizedEntryPath);
+    }
+
+    private static async Task ScanArchiveEntryAsync(IArchiveEntry entry, string normalizedEntryPath,
+        ArchiveScanState scanState, string workingDirectory, bool captureTopLevelThumbnail,
+        CancellationToken cancellationToken)
+    {
+        if (await TryReadDisplayNameAsync(entry, normalizedEntryPath, scanState, cancellationToken))
+            return;
+
+        TryCaptureThumbnail(normalizedEntryPath, scanState, captureTopLevelThumbnail);
+
+        if (TryAddInstallableFile(entry, normalizedEntryPath, scanState))
+            return;
+
+        if (IsNestedArchive(normalizedEntryPath))
+            await ScanNestedArchiveAsync(entry, normalizedEntryPath, scanState, workingDirectory, cancellationToken);
+    }
+
+    private static async Task<bool> TryReadDisplayNameAsync(IArchiveEntry entry, string normalizedEntryPath,
+        ArchiveScanState scanState, CancellationToken cancellationToken)
+    {
+        if (scanState.DisplayName is not null || !DazProductMetadataReader.IsSupplementDsx(normalizedEntryPath))
+            return false;
+
+        await using var supplementStream = await entry.OpenEntryStreamAsync(cancellationToken);
+        using var reader = new StreamReader(supplementStream);
+        scanState.DisplayName =
+            DazProductMetadataReader.TryReadProductName(await reader.ReadToEndAsync(cancellationToken));
+        return true;
+    }
+
+    private static void TryCaptureThumbnail(string normalizedEntryPath, ArchiveScanState scanState,
+        bool captureTopLevelThumbnail)
+    {
+        if (scanState.ThumbnailArchiveRelativePath is null
+            && captureTopLevelThumbnail
+            && IsTopLevelThumbnailCandidate(normalizedEntryPath))
+            scanState.ThumbnailArchiveRelativePath = normalizedEntryPath;
+    }
+
+    private static bool TryAddInstallableFile(IArchiveEntry entry, string normalizedEntryPath,
+        ArchiveScanState scanState)
+    {
+        if (!TryGetInstalledRelativePath(normalizedEntryPath, out var installedRelativePath, out var detectedRoot))
+            return false;
+
+        scanState.ContentRoot ??= detectedRoot;
+        scanState.Files.Add(new DazArchiveScanEntry
         {
-            ArchiveName = archiveName,
-            ArchivePath = archivePath,
-            DisplayName = displayName,
-            ThumbnailArchiveRelativePath = thumbnailArchiveRelativePath,
-            ArchiveSize = archiveSize,
-            ContentRoot = contentRoot,
-            AssetTypes = assetTypes.OrderBy(x => x).ToList(),
-            Categories = categories.OrderBy(x => x).ToList(),
-            InstallableFiles = files,
-            NestedArchives = nestedArchives
-        };
+            ArchiveRelativePath = normalizedEntryPath,
+            InstalledRelativePath = installedRelativePath,
+            FileSize = entry.Size < 0 ? 0UL : (ulong)entry.Size
+        });
+
+        AddClassification(installedRelativePath, scanState.Categories, scanState.AssetTypes);
+        return true;
+    }
+
+    private static async Task ScanNestedArchiveAsync(IArchiveEntry entry, string normalizedEntryPath,
+        ArchiveScanState scanState, string workingDirectory, CancellationToken cancellationToken)
+    {
+        var nestedArchivePath = await ExtractNestedArchiveAsync(entry, normalizedEntryPath, workingDirectory,
+                cancellationToken);
+        var nestedInfo = new FileInfo(nestedArchivePath);
+
+        using var nestedArchive = await Task
+            .Run(() => ArchiveFactory.OpenArchive(nestedArchivePath), cancellationToken);
+        var nestedScan = await ScanOpenedArchiveAsync(nestedArchive, Path.GetFileName(normalizedEntryPath),
+                normalizedEntryPath, (ulong)nestedInfo.Length, workingDirectory, captureTopLevelThumbnail: false,
+                cancellationToken);
+
+        scanState.AddNestedArchive(nestedScan);
+    }
+
+    private static async Task<string> ExtractNestedArchiveAsync(IArchiveEntry entry, string normalizedEntryPath,
+        string workingDirectory, CancellationToken cancellationToken)
+    {
+        var nestedArchivePath = Path.Combine(workingDirectory,
+            $"{Guid.NewGuid():N}{Path.GetExtension(normalizedEntryPath)}");
+        await using (var sourceStream = await entry.OpenEntryStreamAsync(cancellationToken))
+        await using (var outputStream = File.Create(nestedArchivePath))
+        {
+            await sourceStream.CopyToAsync(outputStream, cancellationToken);
+        }
+
+        return nestedArchivePath;
     }
 
     public static bool TryGetInstalledRelativePath(string archiveRelativePath, out string installedRelativePath,
@@ -303,21 +320,21 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         return Path.Combine(resolvedSegments);
     }
 
-    public static string ResolveCanonicalSegmentName(string segment)
+    private static string ResolveCanonicalSegmentName(string segment)
     {
         return CanonicalSegmentNames.TryGetValue(segment, out var canonical) ? canonical : segment;
     }
 
     private static string ResolveSegmentAgainstLibrary(string parentPath, string segment)
     {
-        if (Directory.Exists(parentPath))
+        if (!Directory.Exists(parentPath))
+            return ResolveCanonicalSegmentName(segment);
+
+        foreach (var entryPath in Directory.EnumerateFileSystemEntries(parentPath))
         {
-            foreach (var entryPath in Directory.EnumerateFileSystemEntries(parentPath))
-            {
-                var entryName = Path.GetFileName(entryPath);
-                if (string.Equals(entryName, segment, StringComparison.OrdinalIgnoreCase))
-                    return entryName;
-            }
+            var entryName = Path.GetFileName(entryPath);
+            if (string.Equals(entryName, segment, StringComparison.OrdinalIgnoreCase))
+                return entryName;
         }
 
         return ResolveCanonicalSegmentName(segment);
@@ -339,14 +356,14 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
         return IgnoredFileNames.Contains(Path.GetFileName(normalizedEntryPath));
     }
 
-    public static bool IsTopLevelThumbnailCandidate(string normalizedEntryPath)
+    private static bool IsTopLevelThumbnailCandidate(string normalizedEntryPath)
     {
         return !string.IsNullOrWhiteSpace(normalizedEntryPath)
                && !normalizedEntryPath.Contains('/')
                && ThumbnailImageExtensions.Contains(Path.GetExtension(normalizedEntryPath));
     }
 
-    private static void AddClassification(string path, ISet<string> categories, ISet<AssetType> assetTypes)
+    private static void AddClassification(string path, HashSet<string> categories, HashSet<AssetType> assetTypes)
     {
         foreach (var part in path.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, '/'],
                      StringSplitOptions.RemoveEmptyEntries))
@@ -360,6 +377,44 @@ public class DazArchiveScanner(IDirectoryService directoryService) : IDazArchive
                 assetTypes.Add(assetType);
                 break;
             }
+        }
+    }
+
+    private sealed class ArchiveScanState
+    {
+        public List<DazArchiveScanEntry> Files { get; } = [];
+        public List<DazArchiveScanResult> NestedArchives { get; } = [];
+        public HashSet<string> Categories { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<AssetType> AssetTypes { get; } = [];
+        public string? ContentRoot { get; set; }
+        public string? DisplayName { get; set; }
+        public string? ThumbnailArchiveRelativePath { get; set; }
+
+        public void AddNestedArchive(DazArchiveScanResult nestedScan)
+        {
+            NestedArchives.Add(nestedScan);
+
+            foreach (var category in nestedScan.Categories)
+                Categories.Add(NormalizeCategory(category));
+            foreach (var assetType in nestedScan.AssetTypes)
+                AssetTypes.Add(assetType);
+        }
+
+        public DazArchiveScanResult ToScanResult(string archiveName, string archivePath, ulong archiveSize)
+        {
+            return new DazArchiveScanResult
+            {
+                ArchiveName = archiveName,
+                ArchivePath = archivePath,
+                DisplayName = DisplayName,
+                ThumbnailArchiveRelativePath = ThumbnailArchiveRelativePath,
+                ArchiveSize = archiveSize,
+                ContentRoot = ContentRoot,
+                AssetTypes = AssetTypes.OrderBy(x => x).ToList(),
+                Categories = Categories.OrderBy(x => x).ToList(),
+                InstallableFiles = Files,
+                NestedArchives = NestedArchives
+            };
         }
     }
 }

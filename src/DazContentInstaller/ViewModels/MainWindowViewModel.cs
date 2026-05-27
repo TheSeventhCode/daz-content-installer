@@ -69,8 +69,7 @@ public partial class MainWindowViewModel(
     [NotifyCanExecuteChangedFor(nameof(RemoveQueuedArchivesCommand))]
     public partial bool IsBusy { get; set; }
 
-    [ObservableProperty]
-    public partial bool IsBlocked { get; set; }
+    [ObservableProperty] public partial bool IsBlocked { get; set; }
 
     [ObservableProperty] public partial string StatusText { get; set; } = "Ready";
 
@@ -162,11 +161,11 @@ public partial class MainWindowViewModel(
             return;
 
         var (percent, status) = QueueProgressAggregator.ComputeScanProgress(completed, total);
-        if (_uiProgressThrottler.ShouldUpdate(force || completed == total))
-        {
-            ProgressPercent = percent;
-            StatusText = status;
-        }
+        if (!_uiProgressThrottler.ShouldUpdate(force || completed == total))
+            return;
+
+        ProgressPercent = percent;
+        StatusText = status;
     }
 
     private void UpdateCombinedOperationStatus()
@@ -514,7 +513,7 @@ public partial class MainWindowViewModel(
 
                 try
                 {
-                    await archiveInstaller.UninstallArchiveAsync(archive.Id);
+                    await Task.Run(() => archiveInstaller.UninstallArchiveAsync(archive.Id));
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -587,7 +586,8 @@ public partial class MainWindowViewModel(
         {
             foreach (var queueItem in LoadedArchive.OrderByDisplayName(queueItems))
             {
-                await foreach (var progress in archiveInstaller.ReinstallArchiveAsync(queueItem.ArchiveId!.Value, queueItem))
+                await foreach (var progress in archiveInstaller.ReinstallArchiveAsync(queueItem.ArchiveId!.Value,
+                                   queueItem))
                 {
                     UpdateInstallProgressUi(queueItems, progress);
 
@@ -630,7 +630,7 @@ public partial class MainWindowViewModel(
             foreach (var archive in toForget)
             {
                 StatusText = $"Removing database records for {archive.EffectiveDisplayName}";
-                await archiveInstaller.ForgetArchiveAsync(archive.Id);
+                await Task.Run(() => archiveInstaller.ForgetArchiveAsync(archive.Id));
             }
 
             await RefreshInstalledArchivesAsync();
@@ -750,8 +750,7 @@ public partial class MainWindowViewModel(
         {
             var payload = await Task.Run(
                     () => BuildInstalledArchivesRefreshPayloadAsync(selectedLibraryId, cancellationToken),
-                    cancellationToken)
-                .ConfigureAwait(false);
+                    cancellationToken);
 
             await UiThread.RunAsync(async () =>
             {
@@ -816,8 +815,7 @@ public partial class MainWindowViewModel(
         if (selectedLibraryId is null)
             return new InstalledArchivesRefreshPayload([], EmptyAssetLibraryStatistics);
 
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
-            .ConfigureAwait(false);
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         var topLevelArchives = await dbContext.Archives
             .AsNoTracking()
@@ -828,14 +826,12 @@ public partial class MainWindowViewModel(
                         x.Status != ArchiveStatus.Ready &&
                         x.Status != ArchiveStatus.Pending &&
                         x.AssetLibraryId == selectedLibraryId)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+            .ToListAsync(cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
 
         var (countsByRootArchiveId, descendantSearchSegmentsByRootArchiveId) =
-            await BuildInstalledArchiveTreeDataAsync(dbContext, topLevelArchives, cancellationToken)
-                .ConfigureAwait(false);
+            await BuildInstalledArchiveTreeDataAsync(dbContext, topLevelArchives, cancellationToken);
         var rootArchiveIds = topLevelArchives.Select(x => x.Id).ToList();
         var overrideCountsByRootArchiveId = rootArchiveIds.Count == 0
             ? []
@@ -844,12 +840,11 @@ public partial class MainWindowViewModel(
                 .Where(x => rootArchiveIds.Contains(x.RootArchiveId))
                 .GroupBy(x => x.RootArchiveId)
                 .Select(g => new { RootArchiveId = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.RootArchiveId, x => x.Count, cancellationToken)
-                .ConfigureAwait(false);
+                .ToDictionaryAsync(x => x.RootArchiveId, x => x.Count, cancellationToken);
 
         var viewModels = new List<InstalledArchiveViewModel>(topLevelArchives.Count);
         foreach (var archive in topLevelArchives.OrderBy(x =>
-                     ArchiveDisplayName.GetEffectiveDisplayName(x.ArchiveName, x.DisplayName),
+                         ArchiveDisplayName.GetEffectiveDisplayName(x.ArchiveName, x.DisplayName),
                      StringComparer.OrdinalIgnoreCase))
         {
             countsByRootArchiveId.TryGetValue(archive.Id, out var counts);
@@ -861,8 +856,7 @@ public partial class MainWindowViewModel(
         }
 
         var statistics = await assetLibraryStatisticsService
-            .GetStatisticsAsync(selectedLibraryId.Value, cancellationToken)
-            .ConfigureAwait(false);
+            .GetStatisticsAsync(selectedLibraryId.Value, cancellationToken);
 
         return new InstalledArchivesRefreshPayload(viewModels, statistics);
     }
@@ -950,8 +944,7 @@ public partial class MainWindowViewModel(
         var archivesInLibraries = await dbContext.Archives
             .AsNoTracking()
             .Where(x => libraryIds.Contains(x.AssetLibraryId))
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+            .ToListAsync(cancellationToken);
 
         var parentById = archivesInLibraries.ToDictionary(x => x.Id, x => x.ParentArchiveId);
         var archiveById = archivesInLibraries.ToDictionary(x => x.Id);
@@ -966,8 +959,7 @@ public partial class MainWindowViewModel(
         }
 
         var countsByArchiveId =
-            await installRecordStatisticsService.GetCountsGroupedByArchiveIdAsync(dbContext, allTreeArchiveIds)
-                .ConfigureAwait(false);
+            await installRecordStatisticsService.GetCountsGroupedByArchiveIdAsync(dbContext, allTreeArchiveIds);
 
         var countsByRootArchiveId = new Dictionary<Guid, InstallRecordCounts>(topLevelArchives.Count);
         var descendantSegmentsByRootArchiveId =
@@ -991,8 +983,7 @@ public partial class MainWindowViewModel(
         var archivesInLibrary = await dbContext.Archives
             .AsNoTracking()
             .Where(x => x.AssetLibraryId == assetLibraryId)
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
+            .ToListAsync(cancellationToken);
 
         var parentById = archivesInLibrary.ToDictionary(x => x.Id, x => x.ParentArchiveId);
         var archiveById = archivesInLibrary.ToDictionary(x => x.Id);
@@ -1047,8 +1038,7 @@ public partial class MainWindowViewModel(
         }
 
         var statistics = await assetLibraryStatisticsService
-            .GetStatisticsAsync(SelectedAssetLibrary.Id)
-            .ConfigureAwait(false);
+            .GetStatisticsAsync(SelectedAssetLibrary.Id);
 
         await UiThread.RunAsync(() => ApplyAssetLibraryStatistics(statistics));
     }
@@ -1065,7 +1055,9 @@ public partial class MainWindowViewModel(
 
     private async Task LoadSelectedArchiveDetailsAsync(InstalledArchiveViewModel? archive)
     {
-        _archiveDetailsLoadCts?.Cancel();
+        if (_archiveDetailsLoadCts is not null)
+            await _archiveDetailsLoadCts.CancelAsync();
+
         _archiveDetailsLoadCts?.Dispose();
         var loadCts = new CancellationTokenSource();
         _archiveDetailsLoadCts = loadCts;
@@ -1082,8 +1074,7 @@ public partial class MainWindowViewModel(
         try
         {
             builtGroups = await BuildSelectedArchiveFileGroupsAsync(
-                    archive, SelectedAssetLibrary?.Id, cancellationToken)
-                .ConfigureAwait(false);
+                    archive, SelectedAssetLibrary?.Id, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1106,26 +1097,22 @@ public partial class MainWindowViewModel(
     private async Task<IReadOnlyList<ArchiveFileGroupViewModel>> BuildSelectedArchiveFileGroupsAsync(
         InstalledArchiveViewModel archive, Guid? assetLibraryId, CancellationToken cancellationToken)
     {
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
-            .ConfigureAwait(false);
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         var resolvedAssetLibraryId = assetLibraryId
-            ?? await dbContext.Archives
-                .AsNoTracking()
-                .Where(x => x.Id == archive.Id)
-                .Select(x => x.AssetLibraryId)
-                .FirstAsync(cancellationToken)
-                .ConfigureAwait(false);
+                                     ?? await dbContext.Archives
+                                         .AsNoTracking()
+                                         .Where(x => x.Id == archive.Id)
+                                         .Select(x => x.AssetLibraryId)
+                                         .FirstAsync(cancellationToken)
+                                         ;
 
         var archiveIds = await GetArchiveTreeIdsForLibraryAsync(
-                dbContext, resolvedAssetLibraryId, archive.Id, cancellationToken)
-            .ConfigureAwait(false);
+                dbContext, resolvedAssetLibraryId, archive.Id, cancellationToken);
         var archivesInTree = await archiveFileDetailsService
-            .GetArchivesInTreeAsync(dbContext, archiveIds, cancellationToken)
-            .ConfigureAwait(false);
+            .GetArchivesInTreeAsync(dbContext, archiveIds, cancellationToken);
         var records = await archiveFileDetailsService
-            .GetInstallRecordRowsAsync(dbContext, archiveIds, cancellationToken)
-            .ConfigureAwait(false);
+            .GetInstallRecordRowsAsync(dbContext, archiveIds, cancellationToken);
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -1350,8 +1337,7 @@ public partial class MainWindowViewModel(
             .AsNoTracking()
             .Where(x => x.AssetLibraryId == assetLibraryId)
             .Select(x => new { x.Id, x.ParentArchiveId })
-            .ToDictionaryAsync(x => x.Id, x => x.ParentArchiveId, cancellationToken)
-            .ConfigureAwait(false);
+            .ToDictionaryAsync(x => x.Id, x => x.ParentArchiveId, cancellationToken);
 
         return ArchiveTreeResolver.GetTreeIds(parentById, rootId);
     }
@@ -1424,7 +1410,7 @@ public partial class MainWindowViewModel(
 
             try
             {
-                var scan = await archiveScanner.ScanArchiveAsync(archive.ArchivePath);
+                var scan = await Task.Run(() => archiveScanner.ScanArchiveAsync(archive.ArchivePath));
                 await UiThread.RunAsync(() => archive.ApplyScan(scan));
             }
             catch (Exception ex)

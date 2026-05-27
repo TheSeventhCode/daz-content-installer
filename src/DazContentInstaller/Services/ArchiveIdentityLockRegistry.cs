@@ -13,10 +13,10 @@ public sealed class ArchiveIdentityLockRegistry
         CancellationToken cancellationToken = default)
     {
         var semaphore = _locks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
-        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await semaphore.WaitAsync(cancellationToken);
         try
         {
-            return await action().ConfigureAwait(false);
+            return await action();
         }
         finally
         {

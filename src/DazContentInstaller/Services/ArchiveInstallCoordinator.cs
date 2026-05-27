@@ -6,7 +6,7 @@ namespace DazContentInstaller.Services;
 
 public sealed class ArchiveInstallCoordinator(SettingsService settingsService)
 {
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private SemaphoreSlim _capacity = new(1, 1);
     private int _configuredMax = 1;
 
@@ -33,7 +33,7 @@ public sealed class ArchiveInstallCoordinator(SettingsService settingsService)
     public async Task<IAsyncDisposable> AcquireArchiveInstallSlotAsync(CancellationToken cancellationToken = default)
     {
         var semaphore = EnsureCapacity();
-        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await semaphore.WaitAsync(cancellationToken);
         return new InstallSlotLease(semaphore);
     }
 
@@ -42,15 +42,12 @@ public sealed class ArchiveInstallCoordinator(SettingsService settingsService)
         var desiredMax = Math.Max(1, settingsService.CurrentSettings.MaxConcurrentArchiveInstalls);
         lock (_sync)
         {
-            if (_configuredMax == desiredMax)
+            if (_configuredMax == desiredMax || _capacity.CurrentCount != _configuredMax)
                 return _capacity;
 
-            if (_capacity.CurrentCount == _configuredMax)
-            {
-                _capacity.Dispose();
-                _capacity = new SemaphoreSlim(desiredMax, desiredMax);
-                _configuredMax = desiredMax;
-            }
+            _capacity.Dispose();
+            _capacity = new SemaphoreSlim(desiredMax, desiredMax);
+            _configuredMax = desiredMax;
 
             return _capacity;
         }

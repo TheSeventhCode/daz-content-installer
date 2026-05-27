@@ -19,13 +19,11 @@ public sealed class InterruptedInstallRecoveryService(
 
     public async Task RecoverInterruptedInstallsAsync(CancellationToken cancellationToken = default)
     {
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken)
-            .ConfigureAwait(false);
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         var interruptedCount = await dbContext.Archives
             .CountAsync(x => x.Status == ArchiveStatus.Loading || x.Status == ArchiveStatus.Installing,
-                cancellationToken)
-            .ConfigureAwait(false);
+                cancellationToken);
 
         if (interruptedCount == 0)
             return;
@@ -37,7 +35,6 @@ public sealed class InterruptedInstallRecoveryService(
                     .SetProperty(x => x.Status, ArchiveStatus.Error)
                     .SetProperty(x => x.ErrorMessage, InterruptedInstallMessage)
                     .SetProperty(x => x.InstallCompletedAt, completedAt),
-                cancellationToken)
-            .ConfigureAwait(false);
+                cancellationToken);
     }
 }

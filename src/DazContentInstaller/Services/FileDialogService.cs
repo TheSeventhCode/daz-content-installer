@@ -18,7 +18,7 @@ public interface IFileDialogService
 public class FileDialogService(Func<IStorageProvider?>? storageProviderFactory = null) : IFileDialogService
 {
     private readonly Func<IStorageProvider?> _storageProviderFactory =
-        storageProviderFactory ?? (() => GetDefaultStorageProvider());
+        storageProviderFactory ?? (GetDefaultStorageProvider);
 
     public async Task<IReadOnlyList<string>> OpenArchiveFilesAsync()
     {
