@@ -90,6 +90,30 @@ public class DazArchiveInstallerConcurrencyTests
         (finalContent == "first" || finalContent == "second version").ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task InstallArchivesAsync_DoesNotDeadlockWhenConcurrentArchivesSharePathsInDifferentOrder()
+    {
+        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync(configureSettings: settings =>
+            settings.MaxConcurrentArchiveInstalls = 2);
+        var firstArchive = fixture.CreateArchive("first.zip",
+            ("data/shared/a.txt", "first-a"),
+            ("data/shared/b.txt", "first-b"));
+        var secondArchive = fixture.CreateArchive("second.zip",
+            ("data/shared/b.txt", "second-b"),
+            ("data/shared/a.txt", "second-a"));
+        var installer = fixture.CreateInstaller();
+
+        var installTask = installer.InstallArchivesAsync(fixture.AssetLibrary.Id,
+            [new LoadedArchive(firstArchive), new LoadedArchive(secondArchive)]).ToListAsync().AsTask();
+        var completedTask = await Task.WhenAny(installTask, Task.Delay(TimeSpan.FromSeconds(20)));
+
+        completedTask.ShouldBe(installTask);
+        var results = await installTask;
+        results.Last().ArchiveStatus.ShouldBe(ArchiveStatus.Installed);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "a.txt")).ShouldBeTrue();
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "shared", "b.txt")).ShouldBeTrue();
+    }
+
     private sealed class CountingArchiveScanner(IDazArchiveScanner inner) : IDazArchiveScanner
     {
         public int ScanCount { get; private set; }

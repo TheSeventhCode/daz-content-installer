@@ -195,7 +195,7 @@
             </Border>
 
             <Border Grid.Column="1" Classes="card" Margin="0,0,16,0">
-                <Grid RowDefinitions="Auto,12,Auto,8,*">
+                <Grid RowDefinitions="Auto,12,Auto,8,Auto,8,*">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="Installed Archives" Classes="sectionTitle" />
                         <Border Grid.Column="1"
@@ -224,11 +224,13 @@
                             </StackPanel>
                         </Border>
                     </Grid>
-                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+                    <Grid Grid.Row="2">
                         <TextBox PlaceholderText="Search archives..."
                                  Text="{Binding InstalledArchiveSearchText}" />
-                        <ComboBox Grid.Column="1"
-                                  Margin="8,0,0,0"
+                    </Grid>
+                    <Grid Grid.Row="4" ColumnDefinitions="*,*">
+                        <ComboBox
+                                  HorizontalAlignment="Stretch"
                                   MinWidth="180"
                                   ItemsSource="{Binding AvailableCategoryFilters}"
                                   SelectedItem="{Binding SelectedCategoryFilter}">
@@ -245,8 +247,20 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
+                        <ComboBox Grid.Column="1"
+                                  Margin="8,0,0,0"
+                                  HorizontalAlignment="Stretch"
+                                  MinWidth="160"
+                                  ItemsSource="{Binding AvailableInstalledArchiveSortOptions}"
+                                  SelectedItem="{Binding SelectedInstalledArchiveSortOption}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:InstalledArchiveSortOptionViewModel">
+                                    <TextBlock Text="{Binding Label}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </Grid>
-                    <Grid Grid.Row="4">
+                    <Grid Grid.Row="6">
                         <ListBox ItemsSource="{Binding FilteredInstalledArchives}"
                                  SelectedItem="{Binding SelectedInstalledArchive}"
                                  SelectedItems="{Binding SelectedInstalledArchives, x:CompileBindings=False}"

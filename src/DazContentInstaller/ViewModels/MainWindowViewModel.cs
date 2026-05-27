@@ -32,6 +32,14 @@ public partial class MainWindowViewModel(
 {
     private const int CollectionUpdateBatchSize = 50;
     private static readonly TimeSpan UiProgressUpdateInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly InstalledArchiveSortOptionViewModel NameAscendingInstalledArchiveSortOption =
+        new(InstalledArchiveSortMode.NameAscending, "Name (A-Z)");
+    private static readonly InstalledArchiveSortOptionViewModel NameDescendingInstalledArchiveSortOption =
+        new(InstalledArchiveSortMode.NameDescending, "Name (Z-A)");
+    private static readonly InstalledArchiveSortOptionViewModel InstalledNewestArchiveSortOption =
+        new(InstalledArchiveSortMode.InstalledNewest, "Installed newest");
+    private static readonly InstalledArchiveSortOptionViewModel InstalledOldestArchiveSortOption =
+        new(InstalledArchiveSortMode.InstalledOldest, "Installed oldest");
 
     public const string AllCategoriesLabel = "All categories";
 
@@ -40,6 +48,13 @@ public partial class MainWindowViewModel(
     private ObservableCollection<InstalledArchiveViewModel> InstalledArchives { get; } = [];
     public ObservableCollection<InstalledArchiveViewModel> FilteredInstalledArchives { get; } = [];
     public ObservableCollection<string> AvailableCategoryFilters { get; } = [AllCategoriesLabel];
+    public ObservableCollection<InstalledArchiveSortOptionViewModel> AvailableInstalledArchiveSortOptions { get; } =
+    [
+        NameAscendingInstalledArchiveSortOption,
+        NameDescendingInstalledArchiveSortOption,
+        InstalledNewestArchiveSortOption,
+        InstalledOldestArchiveSortOption
+    ];
     public ObservableCollection<InstalledArchiveViewModel> SelectedInstalledArchives { get; } = [];
     public ObservableCollection<LoadedArchive> SelectedQueueArchives { get; } = [];
     public ObservableCollection<AssetLibraryItemViewModel> AssetLibraries { get; } = [];
@@ -202,6 +217,10 @@ public partial class MainWindowViewModel(
     [ObservableProperty] public partial string SelectedCategoryFilter { get; set; } = AllCategoriesLabel;
 
     [ObservableProperty]
+    public partial InstalledArchiveSortOptionViewModel SelectedInstalledArchiveSortOption { get; set; } =
+        NameAscendingInstalledArchiveSortOption;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAllInstalledArchiveStatusFilterSelected))]
     [NotifyPropertyChangedFor(nameof(IsUninstalledInstalledArchiveStatusFilterSelected))]
     [NotifyPropertyChangedFor(nameof(IsFailedInstalledArchiveStatusFilterSelected))]
@@ -304,6 +323,9 @@ public partial class MainWindowViewModel(
     partial void OnInstalledArchiveSearchTextChanged(string value) => ApplyInstalledArchiveFilter();
 
     partial void OnSelectedCategoryFilterChanged(string value) => ApplyInstalledArchiveFilter();
+
+    partial void OnSelectedInstalledArchiveSortOptionChanged(InstalledArchiveSortOptionViewModel value) =>
+        ApplyInstalledArchiveFilter();
 
     partial void OnSelectedInstalledArchiveStatusFilterChanged(InstalledArchiveStatusFilter value) =>
         ApplyInstalledArchiveFilter();
@@ -921,7 +943,6 @@ public partial class MainWindowViewModel(
             else
                 InstalledArchives.Add(viewModel);
 
-            InstalledArchives.SortBy(x => x.EffectiveDisplayName);
             RefreshAvailableCategoryFilters();
             ApplyInstalledArchiveFilter();
             ApplyQueueArchiveFilter();
@@ -1237,7 +1258,7 @@ public partial class MainWindowViewModel(
         if (!string.IsNullOrWhiteSpace(query))
             matches = matches.Where(x => MatchesInstalledArchiveSearch(x, query));
 
-        return matches.OrderBy(x => x.EffectiveDisplayName, StringComparer.OrdinalIgnoreCase);
+        return InstalledArchiveSorter.Sort(matches, SelectedInstalledArchiveSortOption.Mode);
     }
 
     private static async Task AddToCollectionInBatchesAsync<T>(

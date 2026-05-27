@@ -724,26 +724,33 @@ public class DazArchiveInstaller(
 
         try
         {
-            for (var index = 0; index < installableEntries.Count; index++)
+            for (var batchStart = 0; batchStart < installableEntries.Count; batchStart += InstallStatusBatchSize)
             {
-                var entryResult = await InstallEntryWithProgressAsync(dbContext, assetLibrary, archive,
-                    installableEntries, index, persistenceBatch, cancellationToken);
+                var batchEnd = Math.Min(batchStart + InstallStatusBatchSize, installableEntries.Count);
+                await using var destinationLocks = await AcquireInstallEntryLocksAsync(assetLibrary,
+                    installableEntries, batchStart, batchEnd, cancellationToken);
 
-                if (entryResult.Failure is not null)
+                for (var index = batchStart; index < batchEnd; index++)
                 {
-                    summary.Failure = entryResult.Failure;
-                    yield break;
+                    var entryResult = await InstallEntryWithProgressAsync(dbContext, assetLibrary, archive,
+                        installableEntries, index, persistenceBatch, cancellationToken);
+
+                    if (entryResult.Failure is not null)
+                    {
+                        summary.Failure = entryResult.Failure;
+                        yield break;
+                    }
+
+                    if (entryResult.InstallResult == InstallEntryResult.SkippedDuplicate)
+                        summary.SkippedDuplicateCount++;
+
+                    if (progressThrottler.ShouldUpdate(force: index == installableEntries.Count - 1)
+                        && await YieldArchiveProgressAsync(archive, progressYieldState))
+                        yield return archive;
                 }
 
-                if (entryResult.InstallResult == InstallEntryResult.SkippedDuplicate)
-                    summary.SkippedDuplicateCount++;
-
-                if (progressThrottler.ShouldUpdate(force: index == installableEntries.Count - 1)
-                    && await YieldArchiveProgressAsync(archive, progressYieldState))
-                    yield return archive;
+                await persistenceBatch.FlushAsync(dbContext, cancellationToken);
             }
-
-            await persistenceBatch.FlushAsync(dbContext, cancellationToken);
         }
         finally
         {
@@ -751,6 +758,34 @@ public class DazArchiveInstaller(
             if (summary.Failure is not null)
                 ClearInstallEntryTrackerState(dbContext);
             await persistenceBatch.DisposeAsync();
+        }
+    }
+
+    private async Task<InstallDestinationLockBatch> AcquireInstallEntryLocksAsync(AssetLibrary assetLibrary,
+        IReadOnlyList<InstallableArchiveEntry> installableEntries, int batchStart, int batchEnd,
+        CancellationToken cancellationToken)
+    {
+        var lockKeys = installableEntries
+            .Skip(batchStart)
+            .Take(batchEnd - batchStart)
+            .Select(entry => DestinationPathLockRegistry.CreateLockKey(assetLibrary.Id, entry.InstalledRelativePath))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var leases = new List<IAsyncDisposable>(lockKeys.Count);
+        try
+        {
+            foreach (var lockKey in lockKeys)
+                leases.Add(await destinationPathLockRegistry.AcquireAsync(lockKey, cancellationToken));
+
+            return new InstallDestinationLockBatch(leases);
+        }
+        catch
+        {
+            foreach (var lease in leases)
+                await lease.DisposeAsync();
+            throw;
         }
     }
 
@@ -770,9 +805,6 @@ public class DazArchiveInstaller(
             persistenceBatch.Add(entryUpdate);
 
             PublishInstalledEntryProgress(archive, entry, index, installableEntries.Count);
-            if (persistenceBatch.Count >= InstallStatusBatchSize)
-                await persistenceBatch.FlushAsync(dbContext, cancellationToken);
-
             return new InstallEntryProgressResult(entryUpdate.InstallResult, null);
         }
         catch (Exception ex)
@@ -1161,85 +1193,73 @@ public class DazArchiveInstaller(
         AssetLibrary assetLibrary, InstallableArchiveEntry entry, Guid pendingInstallRecordId,
         CancellationToken cancellationToken)
     {
-        var lockKey = DestinationPathLockRegistry.CreateLockKey(assetLibrary.Id, entry.InstalledRelativePath);
-        var destinationLockLease = await destinationPathLockRegistry.AcquireAsync(lockKey, cancellationToken);
-        try
+        var libraryRoot = GetCanonicalPath(assetLibrary.Path);
+        var installedRelativePath =
+            DazArchiveScanner.CanonicalizeInstalledRelativePath(entry.InstalledRelativePath, libraryRoot);
+        var destinationPath = Path.Combine(libraryRoot, installedRelativePath);
+        var destinationDirectory = Path.GetDirectoryName(destinationPath);
+
+        if (!string.IsNullOrWhiteSpace(destinationDirectory))
+            Directory.CreateDirectory(destinationDirectory);
+
+        var installRecord = await dbContext.InstallRecords
+            .Include(x => x.AssetFile)
+            .Include(x => x.InstalledFile)
+            .FirstAsync(x => x.Id == pendingInstallRecordId, cancellationToken);
+
+        if (installRecord.InstallRecordStatus != InstallRecordStatus.Pending)
         {
-            var libraryRoot = GetCanonicalPath(assetLibrary.Path);
-            var installedRelativePath =
-                DazArchiveScanner.CanonicalizeInstalledRelativePath(entry.InstalledRelativePath, libraryRoot);
-            var destinationPath = Path.Combine(libraryRoot, installedRelativePath);
-            var destinationDirectory = Path.GetDirectoryName(destinationPath);
+            throw new InvalidOperationException(
+                $"Install record {pendingInstallRecordId} is not in the pending state.");
+        }
 
-            if (!string.IsNullOrWhiteSpace(destinationDirectory))
-                Directory.CreateDirectory(destinationDirectory);
+        var installedFile = installRecord.InstalledFile;
+        var assetFile = installRecord.AssetFile;
 
-            var installRecord = await dbContext.InstallRecords
-                .Include(x => x.AssetFile)
-                .Include(x => x.InstalledFile)
-                .FirstAsync(x => x.Id == pendingInstallRecordId, cancellationToken);
+        var activeRecords = installedFile.Id == default
+            ? []
+            : await GetActiveInstallRecordInfosAsync(dbContext, installedFile.Id, cancellationToken);
 
-            if (installRecord.InstallRecordStatus != InstallRecordStatus.Pending)
-            {
-                throw new InvalidOperationException(
-                    $"Install record {pendingInstallRecordId} is not in the pending state.");
-            }
-
-            var installedFile = installRecord.InstalledFile;
-            var assetFile = installRecord.AssetFile;
-
-            var activeRecords = installedFile.Id == default
-                ? []
-                : await GetActiveInstallRecordInfosAsync(dbContext, installedFile.Id, cancellationToken);
-
-            if (activeRecords.Any(x => string.Equals(x.FileHash, entry.FileHash, StringComparison.Ordinal)))
-            {
-                installRecord.InstallRecordStatus = InstallRecordStatus.Skipped;
-                installRecord.InstalledAt = DateTime.Now;
-                assetLibrary.LastUsed = DateTime.Now;
-
-                return new PendingInstallEntryUpdate(
-                    installRecord,
-                    InstallEntryResult.SkippedDuplicate,
-                    InstallRecordStatus.Skipped,
-                    [],
-                    OperationId: null,
-                    BackupFilePath: null,
-                    destinationLockLease);
-            }
-
-            IReadOnlyList<Guid>? overrideRecordIds = activeRecords.Count > 0
-                ? activeRecords.Select(x => x.Id).ToList()
-                : null;
-
-            var operation = activeRecords.Count > 0 && File.Exists(destinationPath)
-                ? await CreateReplacementOperationAsync(entry, pendingInstallRecordId, installedFile.Id,
-                    installedRelativePath, destinationPath, cancellationToken)
-                : null;
-
-            var hash = await CopyWithHashAsync(entry.ExtractedFilePath, destinationPath, cancellationToken);
-
-            assetFile.FileHash = hash;
-            installRecord.InstallRecordStatus = activeRecords.Count == 0
-                ? InstallRecordStatus.Installed
-                : InstallRecordStatus.Replaced;
+        if (activeRecords.Any(x => string.Equals(x.FileHash, entry.FileHash, StringComparison.Ordinal)))
+        {
+            installRecord.InstallRecordStatus = InstallRecordStatus.Skipped;
             installRecord.InstalledAt = DateTime.Now;
             assetLibrary.LastUsed = DateTime.Now;
 
             return new PendingInstallEntryUpdate(
                 installRecord,
-                InstallEntryResult.Installed,
-                installRecord.InstallRecordStatus,
-                overrideRecordIds ?? [],
-                operation?.Id,
-                operation?.BackupFilePath,
-                destinationLockLease);
+                InstallEntryResult.SkippedDuplicate,
+                InstallRecordStatus.Skipped,
+                [],
+                OperationId: null,
+                BackupFilePath: null);
         }
-        catch
-        {
-            await destinationLockLease.DisposeAsync();
-            throw;
-        }
+
+        IReadOnlyList<Guid>? overrideRecordIds = activeRecords.Count > 0
+            ? activeRecords.Select(x => x.Id).ToList()
+            : null;
+
+        var operation = activeRecords.Count > 0 && File.Exists(destinationPath)
+            ? await CreateReplacementOperationAsync(entry, pendingInstallRecordId, installedFile.Id,
+                installedRelativePath, destinationPath, cancellationToken)
+            : null;
+
+        var hash = await CopyWithHashAsync(entry.ExtractedFilePath, destinationPath, cancellationToken);
+
+        assetFile.FileHash = hash;
+        installRecord.InstallRecordStatus = activeRecords.Count == 0
+            ? InstallRecordStatus.Installed
+            : InstallRecordStatus.Replaced;
+        installRecord.InstalledAt = DateTime.Now;
+        assetLibrary.LastUsed = DateTime.Now;
+
+        return new PendingInstallEntryUpdate(
+            installRecord,
+            InstallEntryResult.Installed,
+            installRecord.InstallRecordStatus,
+            overrideRecordIds ?? [],
+            operation?.Id,
+            operation?.BackupFilePath);
     }
 
     private static async Task<List<ActiveInstallRecordInfo>> GetActiveInstallRecordInfosAsync(
@@ -1719,7 +1739,6 @@ public class DazArchiveInstaller(
             }
             finally
             {
-                await ReleaseLocksAsync();
             }
 
             DeleteCompletedBackups(backupPathsToDelete);
@@ -1727,10 +1746,10 @@ public class DazArchiveInstaller(
             _updates.Clear();
         }
 
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
         {
-            await ReleaseLocksAsync();
             _updates.Clear();
+            return ValueTask.CompletedTask;
         }
 
         private static void AttachOverrideStub(ApplicationDbContext dbContext, Guid overrideRecordId)
@@ -1745,12 +1764,6 @@ public class DazArchiveInstaller(
             var stub = new InstallRecord { Id = overrideRecordId };
             dbContext.InstallRecords.Attach(stub);
             stub.HasBeenOverriden = true;
-        }
-
-        private async Task ReleaseLocksAsync()
-        {
-            foreach (var update in _updates)
-                await update.DestinationLockLease.DisposeAsync();
         }
 
         private static void DeleteCompletedBackups(IEnumerable<string> backupPaths)
@@ -1778,8 +1791,16 @@ public class DazArchiveInstaller(
         InstallRecordStatus InstallRecordStatus,
         IReadOnlyList<Guid> OverrideRecordIds,
         Guid? OperationId,
-        string? BackupFilePath,
-        IAsyncDisposable DestinationLockLease);
+        string? BackupFilePath);
+
+    private sealed class InstallDestinationLockBatch(List<IAsyncDisposable> leases) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            foreach (var lease in leases)
+                await lease.DisposeAsync();
+        }
+    }
 
     private sealed record PendingManifestEntry(
         InstallableArchiveEntry Entry,
