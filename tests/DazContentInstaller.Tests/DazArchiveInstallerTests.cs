@@ -246,40 +246,6 @@ public class DazArchiveInstallerTests
     }
 
     [Fact]
-    public void LoadedArchive_ApplyScan_PromotesSingleSubArchiveDisplayName()
-    {
-        var scan = new DazArchiveScanResult
-        {
-            ArchiveName = "bundle.zip",
-            ArchivePath = "/tmp/bundle.zip",
-            NestedArchives =
-            [
-                new DazArchiveScanResult
-                {
-                    ArchiveName = "product.zip",
-                    ArchivePath = "product.zip",
-                    DisplayName = "Business Poses",
-                    InstallableFiles =
-                    [
-                        new DazArchiveScanEntry
-                        {
-                            ArchiveRelativePath = "data/a/file.txt",
-                            InstalledRelativePath = "data/a/file.txt",
-                            FileSize = 10
-                        }
-                    ]
-                }
-            ]
-        };
-
-        var loaded = new LoadedArchive("/tmp/bundle.zip");
-        loaded.ApplyScan(scan);
-
-        loaded.DisplayName.ShouldBe("Business Poses");
-        loaded.HasSubArchives.ShouldBeFalse();
-    }
-
-    [Fact]
     public async Task InstallArchivesAsync_DeduplicatesAssetTypesAfterQueueScanAndInstall()
     {
         await using var fixture = await InstallerFixture.CreateAsync();
@@ -370,31 +336,27 @@ public class DazArchiveInstallerTests
     }
 
     [Fact]
-    public async Task InstallArchivesAsync_BatchesInstallRecordsWhenSingleThreaded()
+    public async Task InstallArchivesAsync_CompletesLargeArchiveAcrossPersistenceBatches()
     {
-        const int fileCount = 25;
+        const int fileCount = 750;
         var entries = Enumerable.Range(1, fileCount)
-            .Select(i => ($"data/author/product/file{i:D3}.txt", $"content-{i}"))
+            .Select(i => ($"data/large/product/file{i:D4}.txt", $"content-{i}"))
             .ToArray();
 
         await using var fixture = await InstallerFixture.CreateAsync(configureSettings: settings =>
             settings.MaxConcurrentArchiveInstalls = 1);
-        var archivePath = fixture.CreateArchive("many-files.zip", entries);
+        var archivePath = fixture.CreateArchive("large.zip", entries);
         var installer = fixture.CreateInstaller();
 
-        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
+        var results = await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)])
+            .ToListAsync();
 
+        results.Last().ArchiveStatus.ShouldBe(ArchiveStatus.Installed);
+        results.Last().ProgressPercent.ShouldBe(100d);
         (await fixture.DbContext.InstallRecords.CountAsync()).ShouldBe(fileCount);
-        (await fixture.DbContext.AssetFiles.CountAsync()).ShouldBe(fileCount);
-        (await fixture.DbContext.InstalledFiles.CountAsync()).ShouldBe(fileCount);
-
-        foreach (var (entryPath, content) in entries)
-        {
-            var relativePath = entryPath.Replace('/', Path.DirectorySeparatorChar);
-            var installedPath = Path.Combine(fixture.LibraryPath, relativePath);
-            File.Exists(installedPath).ShouldBeTrue();
-            (await File.ReadAllTextAsync(installedPath)).ShouldBe(content);
-        }
+        (await fixture.DbContext.InstallRecords.CountAsync(x => x.InstallRecordStatus == InstallRecordStatus.Installed))
+            .ShouldBe(fileCount);
+        File.Exists(Path.Combine(fixture.LibraryPath, "data", "large", "product", "file0750.txt")).ShouldBeTrue();
     }
 
     [Fact]

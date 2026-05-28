@@ -6,16 +6,16 @@ namespace DazContentInstaller.Tests;
 public class ArchiveContentFingerprintTests
 {
     [Fact]
-    public void Compute_IsDeterministicForSameManifest()
+    public void Compute_ChangesWhenManifestContentChanges()
     {
-        var files = new[]
-        {
-            (InstalledRelativePath: "data/a/file.txt", FileHash: "ABC123", FileSize: 10UL),
-            (InstalledRelativePath: "Runtime/textures/image.jpg", FileHash: "DEF456", FileSize: 20UL)
-        };
+        var original = ArchiveContentFingerprint.Compute([
+            (InstalledRelativePath: "data/a/file.txt", FileHash: "ABC123", FileSize: 10UL)
+        ]);
+        var changed = ArchiveContentFingerprint.Compute([
+            (InstalledRelativePath: "data/a/file.txt", FileHash: "DEF456", FileSize: 10UL)
+        ]);
 
-        ArchiveContentFingerprint.Compute(files)
-            .ShouldBe(ArchiveContentFingerprint.Compute(files));
+        changed.ShouldNotBe(original);
     }
 
     [Fact]
@@ -45,8 +45,7 @@ public class ArchiveContentFingerprintTests
         {
             var hash = await ArchiveContentFingerprint.HashFileAsync(filePath);
 
-            hash.ShouldBe(await ArchiveContentFingerprint.HashFileAsync(filePath));
-            hash.Length.ShouldBe(64);
+            hash.ShouldBe("2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824");
         }
         finally
         {

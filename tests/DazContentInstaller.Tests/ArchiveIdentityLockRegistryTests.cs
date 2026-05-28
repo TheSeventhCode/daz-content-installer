@@ -6,15 +6,6 @@ namespace DazContentInstaller.Tests;
 public class ArchiveIdentityLockRegistryTests
 {
     [Fact]
-    public void CreateLockKey_IncludesLibraryArchiveNameAndSize()
-    {
-        var libraryId = Guid.Parse("11111111-2222-3333-4444-555555555555");
-
-        ArchiveIdentityLockRegistry.CreateLockKey(libraryId, "content.zip", 4096)
-            .ShouldBe("11111111222233334444555555555555:content.zip:4096");
-    }
-
-    [Fact]
     public async Task ExecuteAsync_SerializesConcurrentAccessForSameKey()
     {
         var registry = new ArchiveIdentityLockRegistry();

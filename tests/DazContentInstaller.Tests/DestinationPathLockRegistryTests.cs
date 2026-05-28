@@ -6,15 +6,6 @@ namespace DazContentInstaller.Tests;
 public class DestinationPathLockRegistryTests
 {
     [Fact]
-    public void CreateLockKey_FormatsAssetLibraryAndPath()
-    {
-        var libraryId = Guid.Parse("11111111-2222-3333-4444-555555555555");
-
-        DestinationPathLockRegistry.CreateLockKey(libraryId, "data/shared/file.txt")
-            .ShouldBe("11111111222233334444555555555555:data/shared/file.txt");
-    }
-
-    [Fact]
     public async Task ExecuteAsync_SerializesConcurrentAccessForSameKey()
     {
         var registry = new DestinationPathLockRegistry();

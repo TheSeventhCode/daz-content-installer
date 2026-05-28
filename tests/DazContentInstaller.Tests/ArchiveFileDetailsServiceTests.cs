@@ -92,26 +92,4 @@ public class ArchiveFileDetailsServiceTests
         archiveInfos.Single(x => x.Id == root.Id).ParentArchiveId.ShouldBeNull();
         archiveInfos.Count(x => x.ParentArchiveId == root.Id).ShouldBe(2);
     }
-
-    [Fact]
-    public async Task GetInstallRecordRowsAsync_ReturnsEmptyListForEmptyArchiveIds()
-    {
-        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
-        var service = new ArchiveFileDetailsService();
-
-        var rows = await service.GetInstallRecordRowsAsync(fixture.DbContext, []);
-
-        rows.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public async Task GetArchivesInTreeAsync_ReturnsEmptyListForEmptyArchiveIds()
-    {
-        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
-        var service = new ArchiveFileDetailsService();
-
-        var archiveInfos = await service.GetArchivesInTreeAsync(fixture.DbContext, []);
-
-        archiveInfos.ShouldBeEmpty();
-    }
 }

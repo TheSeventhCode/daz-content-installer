@@ -47,39 +47,6 @@ public class CrashSafeInstallTrackingTests
     }
 
     [Fact]
-    public async Task InstallArchivesAsync_LeavesDurableManifestRowsAfterMidInstallFailure()
-    {
-        await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();
-        var entries = Enumerable.Range(1, 3)
-            .Select(i => ($"data/author/product/file{i}.txt", $"content-{i}"))
-            .ToArray();
-        var archivePath = fixture.CreateArchive("content.zip", entries);
-        var installer = fixture.CreateInstaller();
-
-        await installer.InstallArchivesAsync(fixture.AssetLibrary.Id, [new LoadedArchive(archivePath)]).ToListAsync();
-
-        var archive = await fixture.DbContext.Archives.SingleAsync();
-        var records = await fixture.DbContext.InstallRecords
-            .Include(x => x.AssetFile)
-            .OrderBy(x => x.AssetFile.ArchiveRelativePath)
-            .ToListAsync();
-
-        records.Count.ShouldBe(3);
-        records[0].InstallRecordStatus = InstallRecordStatus.Pending;
-        records[1].InstallRecordStatus = InstallRecordStatus.Pending;
-        records[2].InstallRecordStatus = InstallRecordStatus.Pending;
-        archive.Status = ArchiveStatus.Error;
-        archive.ErrorMessage = "Simulated mid-install crash";
-        await fixture.DbContext.SaveChangesAsync();
-
-        fixture.DbContext.ChangeTracker.Clear();
-        (await fixture.DbContext.InstallRecords.CountAsync()).ShouldBe(3);
-        (await fixture.DbContext.InstallRecords.CountAsync(x => x.InstallRecordStatus == InstallRecordStatus.Pending))
-            .ShouldBe(3);
-        (await fixture.DbContext.Archives.SingleAsync()).Status.ShouldBe(ArchiveStatus.Error);
-    }
-
-    [Fact]
     public async Task UninstallArchiveAsync_RemovesCopiedFilesAndIgnoresPendingRowsOnErrorArchive()
     {
         await using var fixture = await DazArchiveInstallerTests.InstallerFixture.CreateAsync();

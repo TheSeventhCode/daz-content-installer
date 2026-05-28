@@ -6,32 +6,12 @@ namespace DazContentInstaller.Tests;
 public class FileDialogServiceTests
 {
     [Fact]
-    public async Task OpenArchiveFilesAsync_ReturnsEmptyWhenStorageProviderUnavailable()
+    public async Task MethodsReturnEmptyResultsWhenStorageProviderUnavailable()
     {
         var service = new FileDialogService(() => null);
 
-        var result = await service.OpenArchiveFilesAsync();
-
-        result.ShouldBeEmpty();
-    }
-
-    [Fact]
-    public async Task OpenFolderAsync_ReturnsNullWhenStorageProviderUnavailable()
-    {
-        var service = new FileDialogService(() => null);
-
-        var result = await service.OpenFolderAsync("Select folder");
-
-        result.ShouldBeNull();
-    }
-
-    [Fact]
-    public async Task OpenFilesAsync_ReturnsEmptyWhenStorageProviderUnavailable()
-    {
-        var service = new FileDialogService(() => null);
-
-        var result = await service.OpenFilesAsync("Select files");
-
-        result.ShouldBeEmpty();
+        (await service.OpenArchiveFilesAsync()).ShouldBeEmpty();
+        (await service.OpenFilesAsync("Select files")).ShouldBeEmpty();
+        (await service.OpenFolderAsync("Select folder")).ShouldBeNull();
     }
 }
